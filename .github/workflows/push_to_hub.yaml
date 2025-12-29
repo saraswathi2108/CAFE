@@ -1,0 +1,84 @@
+name: push docker image to hub
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Cleanup build folder
+        run: |
+          ls -la ./
+          rm -rf ./* || true
+          rm -rf ./.??* || true
+          ls -la ./
+
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+
+      - name: Install required packages
+        run: sudo apt-get update && sudo apt-get install -y apt-transport-https ca-certificates curl unzip git jq wget
+
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-2
+
+      - name: who iam i
+        run: whoami
+
+
+      - name: Detect changed top-level folders
+        id: changes
+        run: |
+          CHANGED=$(git diff-tree --no-commit-id --name-only -r HEAD | cut -d/ -f1 | sort -u | tr '\n' ' ')
+          echo "changed=$CHANGED" >> $GITHUB_OUTPUT
+
+
+      - name: ECR Login
+        run: |
+          aws ecr get-login-password --region ap-south-2 | docker login --username AWS --password-stdin 208940303379.dkr.ecr.ap-south-2.amazonaws.com
+
+      - name: Install yq
+        run: |
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.40.5/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: push to hub
+        run: |
+          CHANGED="${{ steps.changes.outputs.changed }}"; \
+          if [[ "$CHANGED" == *"src"* || "$CHANGED" == *"pom.xml"* ]]; then \
+            if [ -f "Dockerfile" ]; then \
+              REPO=$(yq e '.image.repository' values.yaml); \
+              VERSION=$(yq e '.image.tag' values.yaml); \
+              REPO_NAME=$(echo $REPO | cut -d/ -f2- | cut -d: -f1); \
+              EXISTS=$(aws ecr describe-images --repository-name $REPO_NAME --image-ids imageTag=$VERSION --query 'imageDetails[0].imageTags[0]' --output text 2>/dev/null || echo NOT_FOUND); \
+              if [ "$EXISTS" = "NOT_FOUND" ]; then \
+                docker buildx build --platform=linux/arm64 -t $REPO:$VERSION .; \
+                docker push $REPO:$VERSION; \
+                docker rmi $REPO:$VERSION; \
+                docker system prune -af; \
+              fi; \
+            fi; \
+          fi     
+
+      - name: Cleanup build folder
+        if: always()
+        run: |
+          ls -la ./
+          rm -rf ./* || true
+          rm -rf ./.??* || true
+          ls -la ./
+
+
+
+
+
+
