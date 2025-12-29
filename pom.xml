@@ -110,7 +110,7 @@
 			<artifactId>spring-boot-starter-actuator</artifactId>
 		</dependency>
 	</dependencies>
-<!--jkj-->
+
 	<build>
 		<plugins>
 			<plugin>
