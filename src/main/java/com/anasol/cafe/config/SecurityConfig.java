@@ -30,7 +30,6 @@ public class SecurityConfig {
                 )
                 .authorizeHttpRequests(auth -> auth
 
-                        // PUBLIC AUTH ENDPOINTS
                         .requestMatchers(
                                 "/api/auth/login",
                                 //   "/api/auth/change-password",
@@ -39,10 +38,7 @@ public class SecurityConfig {
                                 "/actuator/**"
                         ).permitAll()
 
-                        // ADMIN ONLY
-                        //    .requestMatchers("/api/auth/admin/**").hasRole("ADMIN")
 
-                        // EVERYTHING ELSE
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
