@@ -5,4 +5,4 @@ replicaCount: 1
 image:
   repository: 208940303379.dkr.ecr.ap-south-2.amazonaws.com/cafe
   pullPolicy: IfNotPresent
-  tag: "v1.0.1"
+  tag: "v1.0.2"
