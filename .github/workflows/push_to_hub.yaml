@@ -83,23 +83,16 @@ jobs:
             echo "No relevant changes detected. Skipping Docker build."
           fi
 
+
       - name: Deploy to EC2
-        env:
-          AWS_REGION: ap-south-2
-          AWS_ACCOUNT: ${{ secrets.AWS_ACCOUNT_ID }}
-          REPO: ${{ steps.image.outputs.repo }}
-          VERSION: ${{ steps.image.outputs.version }}
-          ENV_FILE_PATH: /home/ubuntu/.env
         run: |
-          # Prepare SSH key
           mkdir -p ~/.ssh
           echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/coffee_key.pem
-          chmod 600 ~/.ssh/coffee_key.pem 
+          chmod 600 ~/.ssh/coffee_key.pem
           
-          # SSH into EC2 and run deployment script
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/coffee_key.pem ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}
-          'bash -s' < /tmp/scripts/deploy.sh
-
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/coffee_key.pem ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
+              "AWS_REGION=ap-south-2 AWS_ACCOUNT=${{ secrets.AWS_ACCOUNT_ID }} REPO=${{ steps.image.outputs.repo }} VERSION=${{ steps.image.outputs.version }} ENV_FILE_PATH=/home/ubuntu/.env \
+               bash /tmp/scripts/deploy.sh"
       # -----------------------------
       # Final cleanup
       # -----------------------------
