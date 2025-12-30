@@ -2,6 +2,7 @@ package com.anasol.cafe.service;
 
 import java.util.List;
 
+import com.anasol.cafe.exceptions.UserAlreadyExistsException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -20,6 +21,10 @@ public class categoryService {
 
 
 	public Category addCat(CategoryRequestDTO categoryRequestDTO) {
+
+		if(categoryRepository.existsByCategoryName(categoryRequestDTO.getCategoryName())) {
+			throw new UserAlreadyExistsException("Category already exist with Name: "+categoryRequestDTO.getCategoryName());
+		}
 
 		Category category = new Category();
 		category.setCategoryName(categoryRequestDTO.getCategoryName());

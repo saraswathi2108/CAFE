@@ -25,6 +25,8 @@ public class AdminController {
     ) {
         return userService.createUser(request);
     }
+
+
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/admin/managers")
     public List<CreateUserResponse> getAllManagers() {

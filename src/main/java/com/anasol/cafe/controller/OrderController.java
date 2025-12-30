@@ -176,6 +176,27 @@ public class OrderController {
         return ResponseEntity.ok(response);
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
+    @PutMapping("/admin/{orderId}/reject")
+    public ResponseEntity<OrderResponseDTO> rejectOrder(@PathVariable Long orderId) {
+        return ResponseEntity.ok(
+                orderService.updateOrderStatus(orderId, OrderStatus.REJECTED)
+        );
+    }
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/admin/rejected")
+    public ResponseEntity<Map<String, Object>> getRejectedOrders(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(defaultValue = "createdAt") String sortBy,
+            @RequestParam(defaultValue = "desc") String direction) {
+
+        Page<OrderResponseDTO> orderPage = orderService.getRejectedOrders(page, size, sortBy, direction);
+
+        Map<String, Object> response = createPagedResponse(orderPage);
+        return ResponseEntity.ok(response);
+    }
+
     private Map<String, Object> createPagedResponse(Page<OrderResponseDTO> page) {
         Map<String, Object> response = new HashMap<>();
         response.put("content", page.getContent());

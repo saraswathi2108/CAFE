@@ -1,9 +1,11 @@
 package com.anasol.cafe.repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
 import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -22,4 +24,6 @@ public interface ProductRepo extends JpaRepository<Product, Long> {
 	@Query("SELECT p FROM Product p WHERE p.id = :id")
 	Optional<Product> findByIdWithLock(@Param("id") Long id);
 
-}
+	Page<Product> findByIsActiveTrue(Pageable pageable);
+
+	Page<Product> findByCategoryIdAndIsActiveTrue(Long categoryId, Pageable pageable);}

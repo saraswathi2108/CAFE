@@ -8,4 +8,5 @@ import com.anasol.cafe.entity.Category;
 @Repository
 public interface categoryRepository extends JpaRepository<Category, Long> {
 
+    boolean existsByCategoryName(String categoryName);
 }

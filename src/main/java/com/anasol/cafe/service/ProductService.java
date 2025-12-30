@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -11,6 +12,7 @@ import org.springframework.web.multipart.MultipartFile;
 import com.anasol.cafe.dto.ProductResponse;
 import com.anasol.cafe.entity.Category;
 import com.anasol.cafe.entity.Product;
+import com.anasol.cafe.exceptions.ResourceNotFoundException;
 import com.anasol.cafe.repository.ProductRepo;
 import com.anasol.cafe.repository.categoryRepository;
 
@@ -39,6 +41,7 @@ public class ProductService {
 		product.setCategory(category);
 		product.setProductName(productName);
 		product.setQuantity(quantity);
+		product.setActive(true);
 
 		String url = s3Service.uploadFile(imageFile);
 		product.setPImage(url);
@@ -49,18 +52,17 @@ public class ProductService {
 
 	}
 
-	public List<ProductResponse> getAllProducts(Pageable pageable) {
-		return productRepo.findAll(pageable)
+	public List<ProductResponse> getAllProducts(org.springframework.data.domain.Pageable pageable) {
+		return productRepo.findByIsActiveTrue(pageable)
 				.stream()
 				.map(p -> {
-					// Database nundi key ni tiskuni presigned URL generate chestunnam
 					String presignedUrl = s3Service.getFileUrl(p.getPImage());
 
 					return new ProductResponse(
 							p.getId(),
 							p.getProductName(),
 							p.getQuantity(),
-							presignedUrl, // Ikkada dynamic URL velthundi
+							presignedUrl,
 							p.getCategory().getCategoryName()
 					);
 				})
@@ -98,6 +100,42 @@ public class ProductService {
 
 	}
 
+
+	public List<ProductResponse> getProductsByCategoryId(Long categoryId, Pageable pageable) {
+
+		Page<Product> pageProducts = productRepo.findByCategoryIdAndIsActiveTrue(categoryId, pageable);
+
+		if (pageProducts.isEmpty()) {
+			throw new ResourceNotFoundException("No active products found for category id: " + categoryId);
+		}
+
+		return pageProducts.getContent()
+				.stream()
+				.map(p -> new ProductResponse(
+						p.getId(),
+						p.getProductName(),
+						p.getQuantity(),
+						s3Service.getFileUrl(p.getPImage()),
+						p.getCategory().getCategoryName()
+				))
+				.toList();
+	}
+
+
+
+
+
+	public void deleteById(Long itemId, boolean status) {
+
+		Product product = productRepo.findById(itemId)
+				.orElseThrow(() -> new RuntimeException("Product not found to delete with id: "+ itemId));
+
+		product.setActive(status);
+
+		productRepo.save(product);
+	}
+
+
 	public Product productById(Long itemId) {
 
 		Product product = productRepo.findById(itemId)
@@ -106,40 +144,6 @@ public class ProductService {
 		log.info("Fetching product by Id {}", itemId);
 		return product;
 	}
-
-
-	public List<ProductResponse> getProductsByCategoryId(Long categoryId, Pageable pageable) {
-		List<Product> products = productRepo.findByCategoryId(categoryId, pageable);
-
-		if (products.isEmpty()) {
-			throw new RuntimeException("No products found for category id: " + categoryId);
-		}
-
-		return products.stream()
-				.map(p -> new ProductResponse(
-						p.getId(),
-						p.getProductName(),
-						p.getQuantity(),
-						s3Service.getFileUrl(p.getPImage()), // Presigned URL generate chestunnam
-						p.getCategory().getCategoryName()
-				))
-				.toList();
-	}
-
-	public void deleteById(Long itemId) {
-
-		Product product = productRepo.findById(itemId)
-				.orElseThrow(() -> new RuntimeException("Product not found to delete with id: "+ itemId));
-
-
-		String key = product.getPImage();
-		log.info("the key for deleting in s3 bucket {}", key);
-
-		s3Service.deleteFile(key);
-
-		productRepo.deleteById(itemId);
-	}
-
 
 
 }

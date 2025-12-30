@@ -15,6 +15,7 @@ public class Product {
     private Long quantity;
 
     private String pImage;
+    private boolean isActive;
 
     @ManyToOne
     @JoinColumn(name = "category_id")

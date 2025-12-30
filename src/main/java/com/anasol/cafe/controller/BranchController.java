@@ -6,6 +6,7 @@ import com.anasol.cafe.dto.CreateBranchRequest;
 import com.anasol.cafe.service.BranchService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -46,4 +47,13 @@ public class BranchController {
     public List<BranchResponse> getAllBranchesForAdmin() {
         return branchService.getAllBranchesForAdmin();
     }
+
+    @PutMapping("/admin/branch/{id}")
+    public ResponseEntity<BranchResponse> updateBranch(
+            @PathVariable Long id,
+            @RequestBody BranchResponse request
+    ) {
+        return ResponseEntity.ok(branchService.updateById(id, request));
+    }
+
 }

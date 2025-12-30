@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -132,4 +133,30 @@ public class BranchService {
         dto.setActive(branch.isActive());
         return dto;
     }
+
+
+    public BranchResponse updateById(Long id, BranchResponse request) {
+
+        Branch branch = branchRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Branch not found with id: " + id
+                ));
+
+        if (request.getBranchName() != null) {
+            branch.setBranchName(request.getBranchName());
+        }
+
+        if (request.getAddress() != null) {
+            branch.setAddress(request.getAddress());
+        }
+
+        branch.setActive(request.isActive());
+
+        log.info("Branch {} updated successfully", branch.getBranchCode());
+
+        return toResponse(branch);
+    }
+
+
+
 }

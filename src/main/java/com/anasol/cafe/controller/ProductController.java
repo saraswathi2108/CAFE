@@ -50,8 +50,8 @@ public class ProductController {
 	@GetMapping("/Allprod")
 	public ResponseEntity<List<ProductResponse>> getAll(
 			@RequestParam(defaultValue = "0") int page,
-			@RequestParam(defaultValue = "10") int size)
-	{
+			@RequestParam(defaultValue = "10") int size) {
+
 		Pageable pageable = PageRequest.of(page, size);
 		return ResponseEntity.ok(productService.getAllProducts(pageable));
 	}
@@ -79,10 +79,10 @@ public class ProductController {
 	}
 
 
-	@DeleteMapping("/deleteProduct/{itemId}")
-	public String deleteProduct(@PathVariable Long itemId) {
+	@PutMapping("/softdelete/{itemId}")
+	public String deleteProduct(@PathVariable Long itemId, @RequestParam boolean status) {
 
-		productService.deleteById(itemId);
+		productService.deleteById(itemId, status);
 
 		log.info("Item deleted Succesfully");
 		return "Product deleted Succesfully";
