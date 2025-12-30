@@ -97,10 +97,8 @@ jobs:
           chmod 600 ~/.ssh/coffee_key.pem 
           
           # SSH into EC2 and run deployment script
-          ssh -o StrictHostKeyChecking=no \
-              -i ~/.ssh/coffee_key.pem \
-              ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
-              'bash -s' < /tmp/scripts/deploy.sh
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/coffee_key.pem ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}
+          'bash -s' < /tmp/scripts/deploy.sh
 
       # -----------------------------
       # Final cleanup
