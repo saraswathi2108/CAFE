@@ -9,6 +9,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Cleanup build folder
         run: |
           ls -la ./
@@ -31,54 +32,83 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-south-2
 
-      - name: who iam i
+      - name: whoami
         run: whoami
 
-
+      # -----------------------------
+      # Detect changed top-level folders
+      # -----------------------------
       - name: Detect changed top-level folders
         id: changes
         run: |
           CHANGED=$(git diff-tree --no-commit-id --name-only -r HEAD | cut -d/ -f1 | sort -u | tr '\n' ' ')
           echo "changed=$CHANGED" >> $GITHUB_OUTPUT
 
-
-      - name: ECR Login
-        run: |
-          aws ecr get-login-password --region ap-south-2 | docker login --username AWS --password-stdin 208940303379.dkr.ecr.ap-south-2.amazonaws.com
-
       - name: Install yq
         run: |
           sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.40.5/yq_linux_amd64
           sudo chmod +x /usr/local/bin/yq
 
-      - name: push to hub
+      - name: Set image variables
+        id: image
         run: |
-          CHANGED="${{ steps.changes.outputs.changed }}"; \
-          if [[ "$CHANGED" == *"src"* || "$CHANGED" == *"pom.xml"* ]]; then \
-            if [ -f "Dockerfile" ]; then \
-              REPO=$(yq e '.image.repository' values.yaml); \
-              VERSION=$(yq e '.image.tag' values.yaml); \
-              REPO_NAME=$(echo $REPO | cut -d/ -f2- | cut -d: -f1); \
-              EXISTS=$(aws ecr describe-images --repository-name $REPO_NAME --image-ids imageTag=$VERSION --query 'imageDetails[0].imageTags[0]' --output text 2>/dev/null || echo NOT_FOUND); \
-              if [ "$EXISTS" = "NOT_FOUND" ]; then \
-                docker buildx build -t $REPO:$VERSION .; \
-                docker push $REPO:$VERSION; \
-                docker rmi $REPO:$VERSION; \
-                docker system prune -af; \
-              fi; \
-            fi; \
-          fi     
+          echo "repo=$(yq e '.image.repository' values.yaml)" >> $GITHUB_OUTPUT
+          echo "version=$(yq e '.image.tag' values.yaml)" >> $GITHUB_OUTPUT
 
-      - name: Cleanup build folder
+      - name: ECR Login
+        run: |
+          aws ecr get-login-password --region ap-south-2 | \
+          docker login --username AWS --password-stdin ${{ steps.image.outputs.repo }}
+
+      - name: Build and push Docker image
+        run: |
+          CHANGED="${{ steps.changes.outputs.changed }}"
+          REPO="${{ steps.image.outputs.repo }}"
+          VERSION="${{ steps.image.outputs.version }}"
+          
+          if [[ "$CHANGED" == *"src"* || "$CHANGED" == *"pom.xml"* ]]; then
+            if [ -f "Dockerfile" ]; then
+              REPO_NAME=$(echo $REPO | cut -d/ -f2- | cut -d: -f1)
+              EXISTS=$(aws ecr describe-images --repository-name $REPO_NAME --image-ids imageTag=$VERSION --query 'imageDetails[0].imageTags[0]' --output text 2>/dev/null || echo NOT_FOUND)
+              if [ "$EXISTS" = "NOT_FOUND" ]; then
+                docker buildx build -t $REPO:$VERSION .
+                docker push $REPO:$VERSION
+                docker rmi $REPO:$VERSION
+                docker system prune -af
+              else
+                echo "Image $REPO:$VERSION already exists in ECR. Skipping build."
+              fi
+            fi
+          else
+            echo "No relevant changes detected. Skipping Docker build."
+          fi
+
+      - name: Deploy to EC2
+        env:
+          AWS_REGION: ap-south-2
+          AWS_ACCOUNT: ${{ secrets.AWS_ACCOUNT_ID }}
+          REPO: ${{ steps.image.outputs.repo }}
+          VERSION: ${{ steps.image.outputs.version }}
+          ENV_FILE_PATH: /home/ubuntu/.env
+        run: |
+          # Prepare SSH key
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/coffee_key.pem
+          chmod 600 ~/.ssh/coffee_key.pem 
+          
+          # SSH into EC2 and run deployment script
+          ssh -o StrictHostKeyChecking=no \
+              -i ~/.ssh/coffee_key.pem \
+              ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
+              'bash -s' < /tmp/scripts/deploy.sh
+
+      # -----------------------------
+      # Final cleanup
+      # -----------------------------
+      - name: Final Cleanup
         if: always()
         run: |
           ls -la ./
           rm -rf ./* || true
           rm -rf ./.??* || true
           ls -la ./
-
-
-
-
-
-

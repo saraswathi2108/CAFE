@@ -87,4 +87,9 @@ public class ProductController {
 		log.info("Item deleted Succesfully");
 		return "Product deleted Succesfully";
 	}
+
+	@GetMapping("/inactive")
+	public List<ProductResponse> getInactiveProducts() {
+		return productService.getAllInactiveProducts();
+	}
 }

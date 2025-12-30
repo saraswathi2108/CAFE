@@ -146,4 +146,22 @@ public class ProductService {
 	}
 
 
+	public List<ProductResponse> getAllInactiveProducts() {
+
+		List<Product> products = productRepo.findByIsActiveFalse();
+
+		if(products.isEmpty()) {
+			throw new ResourceNotFoundException("No inactive products found");
+		}
+
+		return products.stream()
+				.map(p -> new ProductResponse(
+						p.getId(),
+						p.getProductName(),
+						p.getQuantity(),
+						s3Service.getFileUrl(p.getPImage()),
+						p.getCategory().getCategoryName()
+				))
+				.toList();
+	}
 }
