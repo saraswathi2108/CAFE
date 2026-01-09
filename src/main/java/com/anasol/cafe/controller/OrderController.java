@@ -1,5 +1,6 @@
 package com.anasol.cafe.controller;
 
+import com.anasol.cafe.dto.CartOrderRequestDTO;
 import com.anasol.cafe.dto.OrderRequestDTO;
 import com.anasol.cafe.dto.OrderResponseDTO;
 import com.anasol.cafe.dto.StatusUpdateDTO;
@@ -24,10 +25,18 @@ public class OrderController {
         this.orderService = orderService;
     }
 
+    // Existing endpoint for single product ordering
     @PreAuthorize("hasAnyRole('MANAGER', 'STAFF')")
     @PostMapping("/order")
     public ResponseEntity<OrderResponseDTO> placeOrder(@RequestBody OrderRequestDTO orderRequest) {
         return ResponseEntity.ok(orderService.placeOrder(orderRequest));
+    }
+
+    // NEW: Endpoint for cart-based ordering (multiple products)
+    @PreAuthorize("hasAnyRole('MANAGER', 'STAFF')")
+    @PostMapping("/order/cart")
+    public ResponseEntity<OrderResponseDTO> placeOrderFromCart(@RequestBody CartOrderRequestDTO cartOrderRequest) {
+        return ResponseEntity.ok(orderService.placeOrderFromCart(cartOrderRequest));
     }
 
     @PreAuthorize("hasRole('ADMIN')")
@@ -142,7 +151,6 @@ public class OrderController {
         );
     }
 
-    // Additional endpoint for admin to get user orders
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/admin/user/{userId}")
     public ResponseEntity<Map<String, Object>> getOrdersByUser(
@@ -158,7 +166,6 @@ public class OrderController {
         return ResponseEntity.ok(response);
     }
 
-    // Additional endpoint for admin to get user orders by status
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/admin/user/{userId}/{status}")
     public ResponseEntity<Map<String, Object>> getUserOrdersByStatus(
@@ -183,6 +190,7 @@ public class OrderController {
                 orderService.updateOrderStatus(orderId, OrderStatus.REJECTED)
         );
     }
+
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/admin/rejected")
     public ResponseEntity<Map<String, Object>> getRejectedOrders(
@@ -195,6 +203,13 @@ public class OrderController {
 
         Map<String, Object> response = createPagedResponse(orderPage);
         return ResponseEntity.ok(response);
+    }
+
+    // NEW: Endpoint to get order with cart items
+    @PreAuthorize("hasAnyRole('MANAGER', 'STAFF', 'ADMIN')")
+    @GetMapping("/{orderId}/items")
+    public ResponseEntity<OrderResponseDTO> getOrderWithItems(@PathVariable Long orderId) {
+        return ResponseEntity.ok(orderService.getOrderWithItems(orderId));
     }
 
     private Map<String, Object> createPagedResponse(Page<OrderResponseDTO> page) {

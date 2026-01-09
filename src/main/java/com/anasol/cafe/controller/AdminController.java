@@ -27,16 +27,22 @@ public class AdminController {
     }
 
 
+    
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/admin/managers")
     public List<CreateUserResponse> getAllManagers() {
         return userService.getAllManagers();
     }
+    
+    
+    
     @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
     @GetMapping("/staff")
     public List<CreateUserResponse> getStaff() {
         return userService.getStaff();
     }
+    
+    
 
     @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
     @GetMapping("/branches/{branchId}/staff")
@@ -45,6 +51,9 @@ public class AdminController {
     ) {
         return userService.getStaffByBranchId(branchId);
     }
+    
+    
+    
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/branches/{branchId}/managers")
     public List<CreateUserResponse> getManagersByBranch(
@@ -53,6 +62,7 @@ public class AdminController {
         return userService.getManagersByBranchId(branchId);
     }
 
+    
 
     @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
     @PutMapping("/users/{userId}/status")
@@ -62,9 +72,5 @@ public class AdminController {
     ) {
         return userService.updateUserStatus(userId, active);
     }
-
-
-
-
 
 }

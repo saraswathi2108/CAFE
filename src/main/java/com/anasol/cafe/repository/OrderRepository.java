@@ -60,6 +60,15 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     // Find by user ID (Spring Data JPA method)
     List<Order> findByUser_Id(Long userId);
 
+    @Query("SELECT DISTINCT o FROM Order o " +
+            "LEFT JOIN FETCH o.orderItems oi " +
+            "LEFT JOIN FETCH oi.product " +
+            "LEFT JOIN FETCH o.user " +
+            "LEFT JOIN FETCH o.branch " +
+            "WHERE o.id = :orderId")
+    Optional<Order> findByIdWithOrderItems(@Param("orderId") Long orderId);
+
+
     // Find by status
     List<Order> findByStatus(OrderStatus orderStatus);
 

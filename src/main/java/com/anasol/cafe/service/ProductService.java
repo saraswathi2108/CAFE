@@ -2,6 +2,7 @@ package com.anasol.cafe.service;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -34,7 +35,7 @@ public class ProductService {
 	public Product addProduct(Long categoryId, String productName, Long quantity, MultipartFile imageFile) throws IOException {
 
 		Category category = categoryRepository.findById(categoryId)
-				.orElseThrow(() -> new RuntimeException("Category not found to add Product"));
+				.orElseThrow(() -> new ResourceNotFoundException("Category not found to add Product"));
 
 		Product product = new Product();
 
@@ -72,7 +73,7 @@ public class ProductService {
 	public Product updateProduct(Long itemId, String productName, Long quanity, MultipartFile imageFile) throws IOException {
 
 		Product product = productRepo.findById(itemId)
-				.orElseThrow(() -> new RuntimeException("Product not found with id to update: "+ itemId));
+				.orElseThrow(() -> new ResourceNotFoundException("Product not found with id to update: "+ itemId));
 
 		if(productName != null) {
 			product.setProductName(productName);
@@ -102,6 +103,9 @@ public class ProductService {
 
 
 	public List<ProductResponse> getProductsByCategoryId(Long categoryId, Pageable pageable) {
+		
+		Category category = categoryRepository.findById(categoryId)
+				.orElseThrow(() -> new ResourceNotFoundException("Category Not found with id: "+ categoryId));
 
 		Page<Product> pageProducts = productRepo.findByCategoryIdAndIsActiveTrue(categoryId, pageable);
 
@@ -128,7 +132,7 @@ public class ProductService {
 	public void deleteById(Long itemId, boolean status) {
 
 		Product product = productRepo.findById(itemId)
-				.orElseThrow(() -> new RuntimeException("Product not found to delete with id: "+ itemId));
+				.orElseThrow(() -> new ResourceNotFoundException("Product not found to delete with id: "+ itemId));
 
 		product.setActive(status);
 
@@ -139,7 +143,7 @@ public class ProductService {
 	public Product productById(Long itemId) {
 
 		Product product = productRepo.findById(itemId)
-				.orElseThrow(() -> new RuntimeException("Product not found with Id: "+ itemId));
+				.orElseThrow(() -> new ResourceNotFoundException("Product not found with Id: "+ itemId));
 
 		log.info("Fetching product by Id {}", itemId);
 		return product;
@@ -152,6 +156,29 @@ public class ProductService {
 
 		if(products.isEmpty()) {
 			throw new ResourceNotFoundException("No inactive products found");
+		}
+
+		return products.stream()
+				.map(p -> new ProductResponse(
+						p.getId(),
+						p.getProductName(),
+						p.getQuantity(),
+						s3Service.getFileUrl(p.getPImage()),
+						p.getCategory().getCategoryName()
+				))
+				.toList();
+	}
+
+	public Optional<Product> getByProductId(Long productId){
+		return productRepo.findById(productId);
+	}
+
+	public List<ProductResponse> searchByName(String name) {
+
+		List<Product> products = productRepo.findByProductNameContainingIgnoreCaseAndIsActiveTrue(name);
+
+		if(products.isEmpty()) {
+			throw new ResourceNotFoundException("Products not found with this name in search: "+name);
 		}
 
 		return products.stream()

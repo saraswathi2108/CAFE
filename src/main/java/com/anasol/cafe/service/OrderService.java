@@ -1,17 +1,11 @@
 package com.anasol.cafe.service;
 
-import com.anasol.cafe.dto.BranchResponse;
-import com.anasol.cafe.dto.OrderRequestDTO;
-import com.anasol.cafe.dto.OrderResponseDTO;
-import com.anasol.cafe.dto.ProductResponse;
+import com.anasol.cafe.dto.*;
 import com.anasol.cafe.entity.*;
 import com.anasol.cafe.exceptions.OrderProcessingException;
 import com.anasol.cafe.exceptions.ResourceNotFoundException;
 import com.anasol.cafe.exceptions.ValidationException;
-import com.anasol.cafe.repository.BranchRepository;
-import com.anasol.cafe.repository.OrderRepository;
-import com.anasol.cafe.repository.ProductRepo;
-import com.anasol.cafe.repository.UserRepository;
+import com.anasol.cafe.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
@@ -27,8 +21,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -39,6 +36,9 @@ public class OrderService {
     private final BranchRepository branchRepository;
     private final UserRepository userRepository;
     private final ProductRepo productRepo;
+    private final CartRepository cartRepository;
+    private final CartItemsRepository cartItemsRepository;
+    private final S3Service s3Service;
 
     // Helper method to get current authenticated user
     private User getCurrentAuthenticatedUser() {
@@ -51,7 +51,7 @@ public class OrderService {
         log.debug("Getting authenticated user with email: {}", email);
 
         return userRepository.findByEmail(email)
-                .orElseThrow(() -> new ResourceNotFoundException("User", "email", email));
+                .orElseThrow(() -> new ResourceNotFoundException("User not Found with email: "+ email));
     }
 
     @Transactional
@@ -68,11 +68,11 @@ public class OrderService {
 
             // Fetch product with pessimistic lock to prevent concurrent updates
             Product product = productRepo.findByIdWithLock(orderRequest.getProductId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Product", "id", orderRequest.getProductId()));
+                    .orElseThrow(() -> new ResourceNotFoundException("Product Not Found with Id: "+ orderRequest.getProductId()));
 
             // Validate branch exists
             Branch branch = branchRepository.findById(orderRequest.getBranchId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Branch", "id", orderRequest.getBranchId()));
+                    .orElseThrow(() -> new ResourceNotFoundException("Branch Not Found with id: "+ orderRequest.getBranchId()));
 
             // Validate product has sufficient stock
             if (!product.hasSufficientStock(orderRequest.getQuantity())) {
@@ -93,18 +93,27 @@ public class OrderService {
             log.info("Product stock reduced: productId={}, newQuantity={}",
                     product.getId(), product.getQuantity());
 
+            // Create order with OrderItems
             Order order = new Order();
-            order.setProduct(product);
             order.setUser(user);
             order.setBranchId(orderRequest.getBranchId());
-            order.setQuantity(orderRequest.getQuantity());
             order.setStatus(OrderStatus.PENDING);
             order.setCreatedAt(LocalDateTime.now());
+
+            // Create and add OrderItem
+            OrderItem orderItem = new OrderItem();
+            orderItem.setProduct(product);
+            orderItem.setQuantity(orderRequest.getQuantity());
+            orderItem.setOrder(order);
+
+            // Initialize order items list and add item
+            order.setOrderItems(new ArrayList<>());
+            order.getOrderItems().add(orderItem);
 
             Order savedOrder = orderRepo.save(order);
 
             // Reload the order with all relationships
-            savedOrder = orderRepo.findByIdWithAllRelations(savedOrder.getId())
+            savedOrder = orderRepo.findByIdWithOrderItems(savedOrder.getId())
                     .orElse(savedOrder);
 
             logSuccess(methodName, "Order placed successfully. Order ID: " + savedOrder.getId());
@@ -124,6 +133,157 @@ public class OrderService {
         }
     }
 
+    @Transactional
+    public OrderResponseDTO placeOrderFromCart(CartOrderRequestDTO cartOrderRequest) {
+        String methodName = "placeOrderFromCart";
+        logEntry(methodName, cartOrderRequest);
+
+        try {
+            // Validate input
+            validateCartOrderRequest(cartOrderRequest);
+
+            // Get authenticated user
+            User user = getCurrentAuthenticatedUser();
+
+            // Validate branch exists
+            Branch branch = branchRepository.findById(cartOrderRequest.getBranchId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Branch Not Found with id: "+ cartOrderRequest.getBranchId()));
+
+            // Get cart with items
+            Cart cart = cartRepository.findById(cartOrderRequest.getCartId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Cart Not Found with id: "+ cartOrderRequest.getCartId()));
+
+            // Verify cart belongs to current user
+            if (!cart.getUser().getId().equals(user.getId())) {
+                throw new ValidationException("Cart does not belong to current user");
+            }
+
+            // Get all cart items
+            List<CartItems> cartItems = cartItemsRepository.findByCartId(cartOrderRequest.getCartId());
+
+            if (cartItems.isEmpty()) {
+                throw new ValidationException("Cart is empty");
+            }
+
+            log.info("Creating single order from cart: userId={}, cartId={}, branchId={}, itemsCount={}",
+                    user.getId(), cartOrderRequest.getCartId(), cartOrderRequest.getBranchId(), cartItems.size());
+
+            // For cart orders, we need to get the first product to satisfy NOT NULL constraint
+            CartItems firstCartItem = cartItems.get(0);
+            Product firstProduct = productRepo.findById(firstCartItem.getProduct().getId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Product Not Found with Id: "+ firstCartItem.getProduct().getId()));
+
+            // Create a SINGLE order
+            Order order = new Order();
+            order.setUser(user);
+            order.setBranchId(cartOrderRequest.getBranchId());
+            order.setStatus(OrderStatus.PENDING);
+            order.setCreatedAt(LocalDateTime.now());
+            order.setOrderItems(new ArrayList<>());
+
+            // TEMPORARY: Set product and quantity to satisfy NOT NULL constraint
+            // This is not ideal but works as a temporary fix
+//            order.setProduct(firstProduct);
+//            order.setQuantity(firstCartItem.getQuantity());
+
+            // Process each cart item
+            for (CartItems cartItem : cartItems) {
+                Product product = productRepo.findById(cartItem.getProduct().getId())
+                        .orElseThrow(() -> new ResourceNotFoundException("Product Not Found with Id: "+ cartItem.getProduct().getId()));
+
+                // Validate stock
+                if (!product.hasSufficientStock(cartItem.getQuantity())) {
+                    String errorMsg = String.format("Insufficient stock for product: %s. Available: %d, Requested: %d",
+                            product.getProductName(), product.getQuantity(), cartItem.getQuantity());
+                    throw new ValidationException(errorMsg);
+                }
+
+                // Reduce product stock
+                product.reduceStock(cartItem.getQuantity());
+                productRepo.save(product);
+
+                // Create order item and link to the SAME order
+                OrderItem orderItem = new OrderItem();
+                orderItem.setProduct(product);
+                orderItem.setQuantity(cartItem.getQuantity());
+                orderItem.setOrder(order);
+
+                // Add to order's item list
+                order.getOrderItems().add(orderItem);
+
+                log.info("Added order item: productId={}, quantity={}",
+                        product.getId(), cartItem.getQuantity());
+            }
+
+            // Save the SINGLE order with all items
+            Order savedOrder = orderRepo.save(order);
+
+            // Clear cart after successful order
+            cartItemsRepository.deleteAll(cartItems);
+
+            // Load the order with relationships
+            savedOrder = orderRepo.findByIdWithOrderItems(savedOrder.getId())
+                    .orElse(savedOrder);
+
+            logSuccess(methodName, "Cart converted to single order successfully. Order ID: " + savedOrder.getId() +
+                    ", Items count: " + savedOrder.getOrderItems().size());
+
+            return convertToDTO(savedOrder);
+
+        } catch (ResourceNotFoundException | ValidationException e) {
+            logValidationError(methodName, e.getMessage());
+            throw e;
+        } catch (DataAccessException e) {
+            String errorMsg = "Failed to process cart order due to database error";
+            logDatabaseError(methodName, errorMsg, e);
+            throw new OrderProcessingException(errorMsg, e);
+        } catch (Exception e) {
+            String errorMsg = "Failed to process cart order due to unexpected error";
+            logUnexpectedError(methodName, errorMsg, e);
+            throw new OrderProcessingException(errorMsg, e);
+        }
+    }
+
+    // NEW: Get order with all items
+    @Transactional(readOnly = true)
+    public OrderResponseDTO getOrderWithItems(Long orderId) {
+        String methodName = "getOrderWithItems";
+        logEntry(methodName, orderId);
+
+        try {
+            Order order = orderRepo.findById(orderId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Order Not Found with Id: "+ orderId));
+
+            return convertToDTO(order);
+        } catch (ResourceNotFoundException e) {
+            logValidationError(methodName, e.getMessage());
+            throw e;
+        } catch (DataAccessException e) {
+            String errorMsg = "Failed to fetch order details due to database error";
+            logDatabaseError(methodName, errorMsg, e);
+            throw new OrderProcessingException(errorMsg, e);
+        } catch (Exception e) {
+            String errorMsg = "Failed to fetch order details due to unexpected error";
+            logUnexpectedError(methodName, errorMsg, e);
+            throw new OrderProcessingException(errorMsg, e);
+        }
+    }
+
+    private void validateCartOrderRequest(CartOrderRequestDTO request) {
+        if (request == null) {
+            throw new ValidationException("Cart order request cannot be null");
+        }
+
+        if (request.getCartId() == null) {
+            throw new ValidationException("Cart ID cannot be null");
+        }
+
+        if (request.getBranchId() == null) {
+            throw new ValidationException("Branch ID cannot be null");
+        }
+    }
+
+    // Keep all your existing methods unchanged...
     @Transactional(readOnly = true)
     public Page<OrderResponseDTO> getMyOrders(int page, int size, String sortBy, String direction) {
         String methodName = "getMyOrders";
@@ -242,7 +402,7 @@ public class OrderService {
             log.info("Updating order status: orderId={}, newStatus={}", orderId, status);
 
             Order order = orderRepo.findById(orderId)
-                    .orElseThrow(() -> new ResourceNotFoundException("Order", "id", orderId));
+                    .orElseThrow(() -> new ResourceNotFoundException("Order Not Found with Id: "+orderId));
 
             // Validate status transition
             validateStatusTransition(order.getStatus(), status);
@@ -431,7 +591,7 @@ public class OrderService {
 
             // Validate user exists
             userRepository.findById(userId)
-                    .orElseThrow(() -> new ResourceNotFoundException("User", "id", userId));
+                    .orElseThrow(() -> new ResourceNotFoundException("User Not Found with Id: "+ userId));
 
             Pageable pageable = createPageable(page, size, sortBy, direction);
             Page<Order> orderPage = orderRepo.findByUserIdWithBranch(userId, pageable);
@@ -470,7 +630,7 @@ public class OrderService {
 
             // Validate user exists
             userRepository.findById(userId)
-                    .orElseThrow(() -> new ResourceNotFoundException("User", "id", userId));
+                    .orElseThrow(() -> new ResourceNotFoundException("User Not Found with Id: "+ userId));
 
             Pageable pageable = createPageable(page, size, sortBy, direction);
             Page<Order> orderPage = orderRepo.findByUserIdAndStatusWithBranch(userId, status, pageable);
@@ -505,7 +665,7 @@ public class OrderService {
             log.info("Deleting order: orderId={}", orderId);
 
             if (!orderRepo.existsById(orderId)) {
-                throw new ResourceNotFoundException("Order", "id", orderId);
+                throw new ResourceNotFoundException("Order Not Found with Id: "+ orderId);
             }
 
             orderRepo.deleteById(orderId);
@@ -516,7 +676,7 @@ public class OrderService {
             throw e;
         } catch (EmptyResultDataAccessException e) {
             log.warn("Order not found for deletion: orderId={}", orderId);
-            throw new ResourceNotFoundException("Order", "id", orderId);
+            throw new ResourceNotFoundException("Order Not Found for deletion: "+ orderId);
         } catch (DataAccessException e) {
             String errorMsg = "Failed to delete order due to database error";
             logDatabaseError(methodName, errorMsg, e);
@@ -527,6 +687,14 @@ public class OrderService {
             throw new OrderProcessingException(errorMsg, e);
         }
     }
+
+    private void validateUserId(Long userId) {
+        if (userId == null) {
+            throw new ValidationException("User ID cannot be null");
+        }
+    }
+
+
 
     // User can only cancel their own orders
     @Transactional
@@ -544,7 +712,7 @@ public class OrderService {
                     orderId, currentUser.getId(), currentUser.getEmail());
 
             Order order = orderRepo.findById(orderId)
-                    .orElseThrow(() -> new ResourceNotFoundException("Order", "id", orderId));
+                    .orElseThrow(() -> new ResourceNotFoundException("Order Not Found with Id: "+ orderId));
 
             // Verify the order belongs to the current user
             if (!order.getUser().getId().equals(currentUser.getId())) {
@@ -601,7 +769,7 @@ public class OrderService {
                     orderId, currentUser.getId(), currentUser.getEmail());
 
             Order order = orderRepo.findById(orderId)
-                    .orElseThrow(() -> new ResourceNotFoundException("Order", "id", orderId));
+                    .orElseThrow(() -> new ResourceNotFoundException("Order Id Not Found: "+ orderId));
 
             // Verify the order belongs to the current user
             if (!order.getUser().getId().equals(currentUser.getId())) {
@@ -659,22 +827,60 @@ public class OrderService {
         try {
             OrderResponseDTO dto = new OrderResponseDTO();
             dto.setId(order.getId());
-
-            if (order.getProduct() != null) {
-                dto.setProductId(order.getProduct().getId());
-            }
-
             dto.setBranchId(order.getBranchId());
-            dto.setQuantity(order.getQuantity());
             dto.setStatus(order.getStatus());
             dto.setCreatedAt(order.getCreatedAt());
 
+            // Add branch info
             if (order.getBranch() != null) {
                 dto.setBranchResponse(convertBranchToDTO(order.getBranch()));
             }
 
-            if (order.getProduct() != null) {
-                dto.setProductResponse(convertProductToDTO(order.getProduct()));
+            // Process order items
+            if (order.getOrderItems() != null && !order.getOrderItems().isEmpty()) {
+                List<OrderItemResponseDTO> itemDTOs = new ArrayList<>();
+                Long totalQuantity = 0L;
+
+                for (OrderItem item : order.getOrderItems()) {
+                    OrderItemResponseDTO itemDTO = new OrderItemResponseDTO();
+                    itemDTO.setId(item.getId());
+                    itemDTO.setProductId(item.getProduct().getId());
+                    itemDTO.setProductName(item.getProduct().getProductName());
+                    itemDTO.setQuantity(item.getQuantity());
+
+                    // Create complete product response
+                    ProductResponse productResponse = new ProductResponse();
+                    productResponse.setId(item.getProduct().getId());
+                    productResponse.setProductName(item.getProduct().getProductName());
+
+                    // Set image URL if available
+                    if (item.getProduct().getPImage() != null && s3Service != null) {
+                        String imageUrl = s3Service.getFileUrl(item.getProduct().getPImage());
+                        productResponse.setImageUrl(imageUrl);
+                    }
+
+                    // Set category name if available
+                    if (item.getProduct().getCategory() != null) {
+                        productResponse.setCategoryName(
+                                item.getProduct().getCategory().getCategoryName()
+                        );
+                    }
+
+
+
+                    itemDTO.setProductResponse(productResponse);
+                    itemDTOs.add(itemDTO);
+                    totalQuantity += item.getQuantity();
+                }
+
+                dto.setOrderItems(itemDTOs);
+                dto.setTotalItems(totalQuantity);
+                dto.setProductCount(itemDTOs.size());
+
+            } else {
+                dto.setOrderItems(new ArrayList<>());
+                dto.setTotalItems(0L);
+                dto.setProductCount(0);
             }
 
             return dto;
@@ -700,14 +906,7 @@ public class OrderService {
         return dto;
     }
 
-    private void validateUserId(Long userId) {
-        if (userId == null) {
-            throw new ValidationException("User ID cannot be null");
-        }
-    }
-
     private Pageable createPageable(int page, int size, String sortBy, String direction) {
-        // Set default values if not provided
         if (page < 0) page = 0;
         if (size <= 0) size = 10;
         if (sortBy == null || sortBy.isEmpty()) sortBy = "createdAt";
@@ -719,7 +918,6 @@ public class OrderService {
         return PageRequest.of(page, size, Sort.by(sortDirection, sortBy));
     }
 
-    // NEW: Restore product stock when order is rejected or cancelled
     private void restoreProductStock(Order order) {
         if (order.getProduct() != null) {
             Product product = order.getProduct();
@@ -731,7 +929,7 @@ public class OrderService {
         }
     }
 
-    // Enhanced logging methods for better exception tracking
+    // Enhanced logging methods
     private void logEntry(String methodName, Object params) {
         log.debug("Entering {} with params: {}", methodName, params);
     }

@@ -29,4 +29,6 @@ public interface ProductRepo extends JpaRepository<Product, Long> {
 	Page<Product> findByCategoryIdAndIsActiveTrue(Long categoryId, Pageable pageable);
 
 	List<Product> findByIsActiveFalse();
+
+	List<Product> findByProductNameContainingIgnoreCaseAndIsActiveTrue(String name);
 }

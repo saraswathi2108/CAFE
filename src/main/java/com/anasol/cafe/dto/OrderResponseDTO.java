@@ -1,22 +1,23 @@
 package com.anasol.cafe.dto;
 
 import com.anasol.cafe.entity.OrderStatus;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 public class OrderResponseDTO {
     private Long id;
-    private Long productId;
-    //private Long userId;
     private Long branchId;
-    //private String userEmail;
-   // private String branchName;
-    private Long quantity;
     private BranchResponse branchResponse;
-    private ProductResponse productResponse;
-    //private String address;
     private OrderStatus status;
     private LocalDateTime createdAt;
+
+    @JsonProperty("items")
+    private List<OrderItemResponseDTO> orderItems;
+
+    private Long totalItems;
+    private Integer productCount;
 }

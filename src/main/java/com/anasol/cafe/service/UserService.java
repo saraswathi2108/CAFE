@@ -7,6 +7,7 @@ import com.anasol.cafe.entity.Role;
 import com.anasol.cafe.entity.User;
 import com.anasol.cafe.exceptions.ResourceNotFoundException;
 import com.anasol.cafe.exceptions.UserAlreadyExistsException;
+import com.anasol.cafe.exceptions.UserDisabledException;
 import com.anasol.cafe.repository.BranchRepository;
 import com.anasol.cafe.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -34,32 +35,32 @@ public class UserService {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || auth.getAuthorities().isEmpty()) {
             log.error("Unauthorized attempt to create user");
-            throw new RuntimeException("Unauthorized");
+            throw new UserDisabledException("Unauthorized");
         }
 
         String currentRole = auth.getAuthorities().iterator().next().getAuthority();
 
         User creator = userRepository.findByEmail(auth.getName().toLowerCase())
-                .orElseThrow(() -> new RuntimeException("Creator not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Creator not found"));
 
         if (currentRole.equals("ROLE_STAFF")) {
             log.warn("Staff tried to create user");
-            throw new RuntimeException("Staff cannot create users");
+            throw new UserDisabledException("Staff cannot create users");
         }
 
         if (request.role == Role.ADMIN && !currentRole.equals("ROLE_ADMIN")) {
             log.warn("Non-admin attempted to create admin");
-            throw new RuntimeException("Only admin can create admin");
+            throw new UserDisabledException("Only admin can create admin");
         }
 
         if (currentRole.equals("ROLE_MANAGER") && request.role == Role.MANAGER) {
             log.warn("Manager attempted to create manager");
-            throw new RuntimeException("Manager cannot create manager");
+            throw new UserDisabledException("Manager cannot create manager");
         }
 
         if (currentRole.equals("ROLE_MANAGER") && request.role != Role.STAFF) {
             log.warn("Manager attempted to create invalid role");
-            throw new RuntimeException("Manager can create only staff");
+            throw new UserDisabledException("Manager can create only staff");
         }
 
         if (userRepository.existsByEmail(request.email.toLowerCase())) {
@@ -76,14 +77,14 @@ public class UserService {
                 branch = creator.getBranch();
                 if (branch == null) {
                     log.error("Manager has no branch assigned");
-                    throw new RuntimeException("Manager has no branch assigned");
+                    throw new ResourceNotFoundException("Manager has no branch assigned");
                 }
             } else {
                 branch = branchRepository.findById(request.branchId)
                         .orElseThrow(() -> new ResourceNotFoundException("Branch not found"));
                 if (!branch.isActive()) {
                     log.warn("Inactive branch used");
-                    throw new RuntimeException("Branch is inactive");
+                    throw new UserDisabledException("Branch is inactive");
                 }
             }
         }
@@ -121,11 +122,11 @@ public class UserService {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null) {
             log.error("Unauthorized access");
-            throw new RuntimeException("Unauthorized");
+            throw new UserDisabledException("Unauthorized");
         }
 
         User currentUser = userRepository.findByEmail(auth.getName().toLowerCase())
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         List<User> staff;
 
@@ -134,7 +135,7 @@ public class UserService {
         } else if (currentUser.getRole() == Role.MANAGER) {
             if (currentUser.getBranch() == null) {
                 log.error("Manager has no branch");
-                throw new RuntimeException("Manager has no branch assigned");
+                throw new ResourceNotFoundException("Manager has no branch assigned");
             }
             staff = userRepository.findByRoleAndBranchId(
                     Role.STAFF,
@@ -142,7 +143,7 @@ public class UserService {
             );
         } else {
             log.warn("Access denied");
-            throw new RuntimeException("Access denied");
+            throw new UserDisabledException("Access denied");
         }
 
         if (staff.isEmpty()) {
@@ -185,7 +186,7 @@ public class UserService {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null) {
             log.error("Unauthorized access");
-            throw new RuntimeException("Unauthorized");
+            throw new UserDisabledException("Unauthorized");
         }
 
         User targetUser = userRepository.findById(userId)
@@ -208,4 +209,5 @@ public class UserService {
         response.active = user.isActive();
         return response;
     }
+
 }

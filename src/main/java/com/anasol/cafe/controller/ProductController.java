@@ -47,6 +47,8 @@ public class ProductController {
 		return "Product Added Succsfully";
 	}
 
+
+
 	@GetMapping("/Allprod")
 	public ResponseEntity<List<ProductResponse>> getAll(
 			@RequestParam(defaultValue = "0") int page,
@@ -91,5 +93,13 @@ public class ProductController {
 	@GetMapping("/inactive")
 	public List<ProductResponse> getInactiveProducts() {
 		return productService.getAllInactiveProducts();
+	}
+
+
+	@GetMapping("/search")
+	public List<ProductResponse> search(@RequestParam String name){
+		List<ProductResponse> products = productService.searchByName(name);
+		log.info("searching by name {}", name);
+		return products;
 	}
 }
