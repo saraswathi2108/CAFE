@@ -31,4 +31,8 @@ public interface ProductRepo extends JpaRepository<Product, Long> {
 	List<Product> findByIsActiveFalse();
 
 	List<Product> findByProductNameContainingIgnoreCaseAndIsActiveTrue(String name);
+
+    void deleteByCategoryId(long id);
+
+	boolean existsByCategoryId(long id);
 }
