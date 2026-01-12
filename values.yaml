@@ -1,6 +1,6 @@
 replicaCount: 1
 
-
+##
 
 image:
   repository: 208940303379.dkr.ecr.ap-south-2.amazonaws.com/cafe
