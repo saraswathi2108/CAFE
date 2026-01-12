@@ -90,6 +90,7 @@ public class categoryService {
 			throw new IllegalStateException(
 					"Cannot delete category. Products exist under this category.");
 		}
+		category.setActive(false);
 
 		categoryRepository.delete(category);
 	}
