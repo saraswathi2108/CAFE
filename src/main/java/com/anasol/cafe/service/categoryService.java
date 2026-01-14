@@ -6,6 +6,7 @@ import java.util.stream.Collectors;
 
 import com.anasol.cafe.exceptions.ResourceNotFoundException;
 import com.anasol.cafe.exceptions.UserAlreadyExistsException;
+import com.anasol.cafe.repository.ProductRepo;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -14,6 +15,7 @@ import com.anasol.cafe.entity.Category;
 import com.anasol.cafe.repository.categoryRepository;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 @Slf4j
@@ -23,6 +25,8 @@ public class categoryService {
 	@Autowired
 	private categoryRepository categoryRepository;
 
+	@Autowired
+	private ProductRepo productRepository;
 	@Autowired
 	private S3Service s3Service;
 
@@ -75,13 +79,21 @@ public class categoryService {
 	}
 
 
+	@Transactional
 	public void delelteCat(long id) {
 
 		Category category = categoryRepository.findById(id)
-				.orElseThrow(() -> new ResourceNotFoundException("Cannot find category with id to delte: "+id));
+				.orElseThrow(() ->
+						new ResourceNotFoundException("Category not found: " + id));
 
-		categoryRepository.deleteById(id);
+		if (productRepository.existsByCategoryId(id)) {
+			throw new IllegalStateException(
+					"Cannot delete category. Products exist under this category.");
+		}
+		category.setActive(false);
 
+		categoryRepository.delete(category);
 	}
+
 
 }

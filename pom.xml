@@ -8,7 +8,7 @@
 		<version>3.5.9</version>
 		<relativePath/> <!-- lookup parent from repository -->
 
-<!--		hj-->
+
 	</parent>
 	<groupId>com.anasol</groupId>
 	<artifactId>cafe</artifactId>

@@ -5,9 +5,9 @@ import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import com.anasol.cafe.dto.CategoryRequestDTO;
@@ -49,6 +49,7 @@ public class categoryController {
 	}
 
 
+	@PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
 	@DeleteMapping("/delete/{id}")
 	public String deleteCat(@PathVariable long id) {
 		categoryService.delelteCat(id);
