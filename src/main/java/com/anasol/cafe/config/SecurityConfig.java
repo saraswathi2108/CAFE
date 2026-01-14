@@ -4,6 +4,7 @@ import com.anasol.cafe.filter.JwtAuthFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -25,26 +26,26 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
 
         http
-                .cors(cors -> {})
+                // We handle CORS via the high-priority Filter Bean in CorsConfig
+                // So we can just enable defaults here or leave it, the Filter runs first.
+                .cors(cors -> cors.disable())
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
                 .authorizeHttpRequests(auth -> auth
+                        // 1. Always allow OPTIONS requests (Preflight)
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-                        // PUBLIC AUTH ENDPOINTS
+                        // 2. Public Endpoints
                         .requestMatchers(
                                 "/api/auth/login",
-                                //   "/api/auth/change-password",
                                 "/swagger-ui/**",
                                 "/v3/api-docs/**",
                                 "/actuator/**"
                         ).permitAll()
 
-                        // ADMIN ONLY
-                        //    .requestMatchers("/api/auth/admin/**").hasRole("ADMIN")
-
-                        // EVERYTHING ELSE
+                        // 3. Authenticated Endpoints
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);

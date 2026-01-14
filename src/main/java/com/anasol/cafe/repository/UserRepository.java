@@ -24,4 +24,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
     List<User> findByRoleAndBranchId(Role role, Long id);
 
     List<User> findByRole(Role role);
+
+    List<User> findByRoleNot(Role role);
+    List<User> findByRoleIn(List<Role> roles);
 }

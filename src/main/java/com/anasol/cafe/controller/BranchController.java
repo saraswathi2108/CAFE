@@ -20,7 +20,7 @@ public class BranchController {
     private final BranchService branchService;
 
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','GODOWN_MANAGER')")
     @PostMapping("/admin/branches")
     public BranchResponse createBranch(
             @Valid @RequestBody CreateBranchRequest request
@@ -28,7 +28,7 @@ public class BranchController {
         return branchService.createBranch(request);
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','GODOWN_MANAGER')")
     @PutMapping("/admin/branches/{branchId}/status")
     public BranchResponse updateBranchStatus(
             @PathVariable Long branchId,
@@ -37,7 +37,7 @@ public class BranchController {
         return branchService.updateBranchStatus(branchId, active);
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','GODOWN_MANAGER')")
     @GetMapping("/branches")
     public List<BranchResponse> getActiveBranches() {
         return branchService.getAllActiveBranches();

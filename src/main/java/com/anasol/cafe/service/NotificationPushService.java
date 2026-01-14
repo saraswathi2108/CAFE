@@ -1,105 +1,125 @@
-//package com.anasol.cafe.service;
-//
-//
-//
-//import com.anasol.cafe.repository.NotificationRepository;
-//import lombok.extern.slf4j.Slf4j;
-//
-//import org.springframework.beans.factory.annotation.Autowired;
-//import org.springframework.stereotype.Service;
-//import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-//
-//import java.io.IOException;
-//import java.util.*;
-//import java.util.concurrent.ConcurrentHashMap;
-//
-//@Service
-//@Slf4j
-//public class NotificationPushService {
-//
-//
-//    private final Map<String, List<SseEmitter>> emitters = new ConcurrentHashMap<>();
-//
-//    @Autowired
-//    private NotificationRepository repository;
-//
-//    public boolean isOnline(String username) {
-//        return emitters.containsKey(username) && !emitters.get(username).isEmpty();
-//    }
-//
-//    public String unSubscribe(String username) {
-//        List<SseEmitter> userEmitters = emitters.remove(username);
-//        if (userEmitters != null) {
-//            userEmitters.forEach(SseEmitter::complete);
-//        }
-//        return "Unsubscribed " + username;
-//    }
-//
-//    public SseEmitter subscribe(String username) {
-//        SseEmitter emitter = new SseEmitter(0L); // infinite timeout
-//
-//        // Add emitter to the list for the user
-//        emitters.computeIfAbsent(username, k -> Collections.synchronizedList(new ArrayList<>())).add(emitter);
-//
-//        emitter.onCompletion(() -> removeEmitter(username, emitter));
-//        emitter.onTimeout(() -> removeEmitter(username, emitter));
-//        emitter.onError(e -> removeEmitter(username, emitter));
-//
-//        System.out.println("SSE connected: " + username);
-//
-//        // Optional: Send unread notifications (if needed)
-////        List<Notification> unread = repository.findByReceiverAndReadFalseOrderByCreatedAtDesc(username);
-////        unread.forEach(notification -> sendToEmitter(emitter, username, notification));
-//
-//        return emitter;
-//    }
-//
-//    public void sendNotificationToUser(String username, Object notification) {
-//        List<SseEmitter> userEmitters = emitters.get(username);
-//        if (userEmitters != null && !userEmitters.isEmpty()) {
-//            List<SseEmitter> deadEmitters = new ArrayList<>();
-//            log.info("found {} emitters for user {} sending notification {}", userEmitters.size(), username, notification);
-//            userEmitters.forEach(emitter -> {
-//                try {
-//                    emitter.send(SseEmitter.event()
-//                            .name("notification")
-//                            .data(notification));
-//                    log.info("Notification sent to user {} with notification {}", username, notification);
-//                    System.out.println("Real-time notification sent to: " + username);
-//                } catch (IOException e) {
-//                    // emitter.completeWithError(e);
-//                    deadEmitters.add(emitter);
-//                    log.error("Failed to send notification to user {}", username);
-//                }
-//            });
-//
-//            // Clean up dead emitters
-//            userEmitters.removeAll(deadEmitters);
-//        } else {
-//            log.info("User {} is offline. Notification {} saved only.", username, notification);
-//            System.out.println("User " + username + " is offline. Notification saved only.");
-//        }
-//    }
-//
-//    private void removeEmitter(String username, SseEmitter emitter) {
-//        List<SseEmitter> userEmitters = emitters.get(username);
-//        if (userEmitters != null) {
-//            userEmitters.remove(emitter);
-//            if (userEmitters.isEmpty()) {
-//                emitters.remove(username);
-//            }
-//        }
-//    }
-//
-//    private void sendToEmitter(SseEmitter emitter, String username, Object data) {
-//        try {
-//            emitter.send(SseEmitter.event()
-//                    .name("notification")
-//                    .data(data));
-//            System.out.println("Unread notification sent to: " + username);
-//        } catch (IOException e) {
-//            emitter.completeWithError(e);
-//            removeEmitter(username, emitter);
-//        }
-//    }
-//}
+package com.anasol.cafe.service;
+
+import com.anasol.cafe.entity.User;
+import com.anasol.cafe.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Service;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+import java.io.IOException;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+@Service
+@RequiredArgsConstructor
+@Slf4j
+public class NotificationPushService {
+
+    private final UserRepository userRepository;
+
+    // Store emitters: Map<UserEmail, SseEmitter>
+    private final Map<String, SseEmitter> emitters = new ConcurrentHashMap<>();
+
+    public SseEmitter subscribeToCurrentUser() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+        if (authentication == null || !authentication.isAuthenticated()) {
+            log.warn("⚠️ Subscription attempt by unauthenticated user");
+            return null;
+        }
+
+        String email = authentication.getName();
+        log.info("🔔 SSE Subscription Request from: {}", email);
+
+        // 1. Create Emitter with Infinite Timeout (Important!)
+        // Default is 30 sec, we set to Long.MAX_VALUE
+        SseEmitter emitter = new SseEmitter(Long.MAX_VALUE);
+
+        // 2. Add callbacks to remove emitter when done
+        emitter.onCompletion(() -> {
+            log.info("✅ SSE Connection Completed for: {}", email);
+            emitters.remove(email);
+        });
+
+        emitter.onTimeout(() -> {
+            log.warn("⌛ SSE Connection Timed Out for: {}", email);
+            emitter.complete();
+            emitters.remove(email);
+        });
+
+        emitter.onError((e) -> {
+            log.error("❌ SSE Connection Error for: {}: {}", email, e.getMessage());
+            emitter.complete();
+            emitters.remove(email);
+        });
+
+        // 3. Store the emitter
+        emitters.put(email, emitter);
+
+        // 4. Send an initial "CONNECTED" message to confirm connection
+        try {
+            emitter.send(SseEmitter.event()
+                    .name("open")
+                    .data("Connection Established for " + email));
+            log.info("🚀 SSE Emitter created and stored for: {}", email);
+        } catch (IOException e) {
+            log.error("❌ Failed to send initial SSE event: {}", e.getMessage());
+            emitters.remove(email);
+        }
+
+        return emitter;
+    }
+
+    public void sendNotificationToUser(String email, Object notificationData) {
+        SseEmitter emitter = emitters.get(email);
+        if (emitter != null) {
+            try {
+                log.info("📤 Sending Notification to: {}", email);
+                emitter.send(SseEmitter.event()
+                        .name("message")
+                        .data(notificationData));
+            } catch (IOException e) {
+                log.error("❌ Failed to send notification to {}: {}", email, e.getMessage());
+                emitters.remove(email);
+            }
+        } else {
+            // log.debug("User {} is not online/subscribed", email);
+        }
+    }
+
+    // Optional: Keep-alive heartbeat every 1 minute to prevent load balancer timeouts
+    @Scheduled(fixedRate = 60000)
+    public void sendHeartbeat() {
+        emitters.forEach((email, emitter) -> {
+            try {
+                emitter.send(SseEmitter.event().comment("heartbeat"));
+            } catch (IOException e) {
+                log.warn("💓 Heartbeat failed for {}, removing emitter.", email);
+                emitters.remove(email);
+            }
+        });
+    }
+
+    public String unsubscribeCurrentUser() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null) {
+            String email = authentication.getName();
+            SseEmitter emitter = emitters.remove(email);
+            if (emitter != null) {
+                emitter.complete();
+                log.info("🔕 User Unsubscribed: {}", email);
+                return "Unsubscribed successfully";
+            }
+        }
+        return "User not found or not subscribed";
+    }
+
+    public boolean isCurrentUserOnline() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication != null && emitters.containsKey(authentication.getName());
+    }
+}

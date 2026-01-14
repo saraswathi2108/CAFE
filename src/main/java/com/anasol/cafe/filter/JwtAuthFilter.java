@@ -1,7 +1,5 @@
 package com.anasol.cafe.filter;
 
-
-
 import com.anasol.cafe.service.JwtService;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
@@ -9,7 +7,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
-
+import lombok.extern.slf4j.Slf4j; // Added for logging if needed
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -21,6 +19,7 @@ import java.util.List;
 
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
@@ -32,18 +31,31 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             FilterChain filterChain
     ) throws ServletException, IOException {
 
-        String authHeader = request.getHeader("Authorization");
-
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+        // Skip filter for OPTIONS (Preflight) requests to let CORS filter handle them
+        if (request.getMethod().equals("OPTIONS")) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        String token = authHeader.substring(7);
+        String authHeader = request.getHeader("Authorization");
+        String token = null;
+
+        // 1. Try Header
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            token = authHeader.substring(7);
+        }
+        // 2. Try Query Param (Essential for SSE on Web)
+        else if (request.getParameter("token") != null) {
+            token = request.getParameter("token");
+        }
+
+        if (token == null) {
+            filterChain.doFilter(request, response);
+            return;
+        }
 
         try {
             Claims claims = jwtService.validateToken(token);
-
             String role = claims.get("role", String.class);
 
             UsernamePasswordAuthenticationToken authentication =
@@ -56,10 +68,11 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             SecurityContextHolder.getContext().setAuthentication(authentication);
 
         } catch (Exception ex) {
+            // Log this if you want to debug why auth fails
+            // log.error("JWT Authentication failed: {}", ex.getMessage());
             SecurityContextHolder.clearContext();
         }
 
         filterChain.doFilter(request, response);
     }
 }
-

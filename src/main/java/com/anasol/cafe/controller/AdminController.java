@@ -3,6 +3,7 @@ package com.anasol.cafe.controller;
 
 import com.anasol.cafe.dto.CreateUserRequest;
 import com.anasol.cafe.dto.CreateUserResponse;
+import com.anasol.cafe.entity.Role;
 import com.anasol.cafe.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -18,7 +19,7 @@ public class AdminController {
 
     private final UserService userService;
 
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER','GODOWN_MANAGER')")
     @PostMapping("/admin/users")
     public CreateUserResponse createUser(
             @Valid @RequestBody CreateUserRequest request
@@ -27,8 +28,8 @@ public class AdminController {
     }
 
 
-    
-    @PreAuthorize("hasRole('ADMIN')")
+
+    @PreAuthorize("hasAnyRole('ADMIN','GODOWN_MANAGER')")
     @GetMapping("/admin/managers")
     public List<CreateUserResponse> getAllManagers() {
         return userService.getAllManagers();
@@ -36,7 +37,7 @@ public class AdminController {
     
     
     
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER','GODOWN_MANAGER')")
     @GetMapping("/staff")
     public List<CreateUserResponse> getStaff() {
         return userService.getStaff();
@@ -44,17 +45,17 @@ public class AdminController {
     
     
 
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER','GODOWN_MANAGER')")
     @GetMapping("/branches/{branchId}/staff")
     public List<CreateUserResponse> getStaffByBranch(
             @PathVariable Long branchId
     ) {
         return userService.getStaffByBranchId(branchId);
     }
-    
-    
-    
-    @PreAuthorize("hasRole('ADMIN')")
+
+
+
+    @PreAuthorize("hasAnyRole('ADMIN','GODOWN_MANAGER')")
     @GetMapping("/branches/{branchId}/managers")
     public List<CreateUserResponse> getManagersByBranch(
             @PathVariable Long branchId
@@ -64,13 +65,30 @@ public class AdminController {
 
     
 
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER','GODOWN_MANAGER')")
     @PutMapping("/users/{userId}/status")
     public CreateUserResponse updateUserStatus(
             @PathVariable Long userId,
             @RequestParam boolean active
     ) {
         return userService.updateUserStatus(userId, active);
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @PostMapping("/admin/godown-managers")
+    public CreateUserResponse createGodownManager(
+            @Valid @RequestBody CreateUserRequest request
+    ) {
+
+        request.role = Role.GODOWN_MANAGER;
+        return userService.createUser(request);
+    }
+
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/admin/godown-managers")
+    public List<CreateUserResponse> getAllGodownManagers() {
+        return userService.getAllGodownManagers();
     }
 
 }

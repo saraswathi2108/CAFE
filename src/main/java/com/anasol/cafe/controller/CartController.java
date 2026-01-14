@@ -65,7 +65,6 @@ public class CartController {
     }
 
     @GetMapping("/user/count")
-
     public ResponseEntity<Integer> getMyCartItemCount() {
 
         // User will be identified from authentication token
@@ -74,7 +73,6 @@ public class CartController {
     }
 
     @PutMapping("/user/items/{productId}/quantity")
-
     public ResponseEntity<CartItemDTO> updateMyItemQuantity(
             @PathVariable Long productId,
             @RequestParam Integer quantity) {

@@ -43,24 +43,38 @@ public class UserService {
         User creator = userRepository.findByEmail(auth.getName().toLowerCase())
                 .orElseThrow(() -> new ResourceNotFoundException("Creator not found"));
 
-        if (currentRole.equals("ROLE_STAFF")) {
-            log.warn("Staff tried to create user");
-            throw new UserDisabledException("Staff cannot create users");
-        }
+        // Check permissions based on current user's role
+        switch (currentRole) {
+            case "ROLE_STAFF":
+                log.warn("Staff tried to create user");
+                throw new UserDisabledException("Staff cannot create users");
 
-        if (request.role == Role.ADMIN && !currentRole.equals("ROLE_ADMIN")) {
-            log.warn("Non-admin attempted to create admin");
-            throw new UserDisabledException("Only admin can create admin");
-        }
+            case "ROLE_MANAGER":
+                if (request.role == Role.MANAGER) {
+                    log.warn("Manager attempted to create manager");
+                    throw new UserDisabledException("Manager cannot create manager");
+                }
+                if (request.role != Role.STAFF) {
+                    log.warn("Manager attempted to create invalid role");
+                    throw new UserDisabledException("Manager can create only staff");
+                }
+                break;
 
-        if (currentRole.equals("ROLE_MANAGER") && request.role == Role.MANAGER) {
-            log.warn("Manager attempted to create manager");
-            throw new UserDisabledException("Manager cannot create manager");
-        }
+            case "ROLE_GODOWN_MANAGER":
 
-        if (currentRole.equals("ROLE_MANAGER") && request.role != Role.STAFF) {
-            log.warn("Manager attempted to create invalid role");
-            throw new UserDisabledException("Manager can create only staff");
+                if (request.role == Role.ADMIN || request.role == Role.GODOWN_MANAGER) {
+                    log.warn("Godown Manager attempted to create {} role", request.role);
+                    throw new UserDisabledException("Godown Manager cannot create " + request.role + " users");
+                }
+                break;
+
+            case "ROLE_ADMIN":
+
+                break;
+
+            default:
+                log.warn("Unknown role attempted to create user");
+                throw new UserDisabledException("Unauthorized role");
         }
 
         if (userRepository.existsByEmail(request.email.toLowerCase())) {
@@ -70,24 +84,53 @@ public class UserService {
             );
         }
 
+        // ... existing code ...
+
         Branch branch = null;
 
-        if (request.role != Role.ADMIN) {
-            if (currentRole.equals("ROLE_MANAGER")) {
-                branch = creator.getBranch();
-                if (branch == null) {
-                    log.error("Manager has no branch assigned");
-                    throw new ResourceNotFoundException("Manager has no branch assigned");
-                }
-            } else {
+// Handle branch assignment based on role
+        if (request.role == Role.ADMIN) {
+            // Admin doesn't need a branch
+            branch = null;
+        } else if (currentRole.equals("ROLE_MANAGER")) {
+            // Manager can only create staff for their own branch
+            branch = creator.getBranch();
+            if (branch == null) {
+                log.error("Manager has no branch assigned");
+                throw new ResourceNotFoundException("Manager has no branch assigned");
+            }
+        } else if (currentRole.equals("ROLE_GODOWN_MANAGER") && request.role == Role.MANAGER) {
+            // Godown Manager creating a Manager - check if branchId is provided
+            if (request.branchId != null) {
                 branch = branchRepository.findById(request.branchId)
                         .orElseThrow(() -> new ResourceNotFoundException("Branch not found"));
                 if (!branch.isActive()) {
                     log.warn("Inactive branch used");
                     throw new UserDisabledException("Branch is inactive");
                 }
+            } else {
+
+                branch = null;
+            }
+        } else if (request.role != Role.ADMIN) {
+
+            if (request.role == Role.GODOWN_MANAGER && request.branchId == null) {
+
+                branch = null;
+            } else if (request.branchId != null) {
+                // For other roles, branch is required
+                branch = branchRepository.findById(request.branchId)
+                        .orElseThrow(() -> new ResourceNotFoundException("Branch not found"));
+                if (!branch.isActive()) {
+                    log.warn("Inactive branch used");
+                    throw new UserDisabledException("Branch is inactive");
+                }
+            } else {
+                // Branch is required for MANAGER and STAFF roles
+                throw new ResourceNotFoundException("Branch ID is required for " + request.role + " role");
             }
         }
+
 
         User user = new User();
         user.setEmail(request.email.toLowerCase());
@@ -104,7 +147,6 @@ public class UserService {
     }
 
     public List<CreateUserResponse> getAllManagers() {
-
         List<User> managers = userRepository.findByRole(Role.MANAGER);
 
         if (managers.isEmpty()) {
@@ -117,8 +159,20 @@ public class UserService {
                 .toList();
     }
 
-    public List<CreateUserResponse> getStaff() {
+    public List<CreateUserResponse> getAllGodownManagers() {
+        List<User> godownManagers = userRepository.findByRole(Role.GODOWN_MANAGER);
 
+        if (godownManagers.isEmpty()) {
+            log.warn("No godown managers found");
+            return List.of();
+        }
+
+        return godownManagers.stream()
+                .map(this::mapToResponse)
+                .toList();
+    }
+
+    public List<CreateUserResponse> getStaff() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null) {
             log.error("Unauthorized access");
@@ -130,20 +184,26 @@ public class UserService {
 
         List<User> staff;
 
-        if (currentUser.getRole() == Role.ADMIN) {
-            staff = userRepository.findByRole(Role.STAFF);
-        } else if (currentUser.getRole() == Role.MANAGER) {
-            if (currentUser.getBranch() == null) {
-                log.error("Manager has no branch");
-                throw new ResourceNotFoundException("Manager has no branch assigned");
-            }
-            staff = userRepository.findByRoleAndBranchId(
-                    Role.STAFF,
-                    currentUser.getBranch().getId()
-            );
-        } else {
-            log.warn("Access denied");
-            throw new UserDisabledException("Access denied");
+        switch (currentUser.getRole()) {
+            case ADMIN:
+            case GODOWN_MANAGER:
+                staff = userRepository.findByRole(Role.STAFF);
+                break;
+
+            case MANAGER:
+                if (currentUser.getBranch() == null) {
+                    log.error("Manager has no branch");
+                    throw new ResourceNotFoundException("Manager has no branch assigned");
+                }
+                staff = userRepository.findByRoleAndBranchId(
+                        Role.STAFF,
+                        currentUser.getBranch().getId()
+                );
+                break;
+
+            default:
+                log.warn("Access denied");
+                throw new UserDisabledException("Access denied");
         }
 
         if (staff.isEmpty()) {
@@ -155,7 +215,6 @@ public class UserService {
     }
 
     public List<CreateUserResponse> getStaffByBranchId(Long branchId) {
-
         List<User> staff = userRepository.findByRoleAndBranchId(Role.STAFF, branchId);
 
         if (staff.isEmpty()) {
@@ -167,7 +226,6 @@ public class UserService {
     }
 
     public List<CreateUserResponse> getManagersByBranchId(Long branchId) {
-
         Branch branch = branchRepository.findById(branchId)
                 .orElseThrow(() -> new ResourceNotFoundException("Branch not found"));
 
@@ -181,16 +239,60 @@ public class UserService {
         return managers.stream().map(this::mapToResponse).toList();
     }
 
-    public CreateUserResponse updateUserStatus(Long userId, boolean active) {
-
+    public List<CreateUserResponse> getUsersByRole(Role role) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null) {
             log.error("Unauthorized access");
             throw new UserDisabledException("Unauthorized");
         }
 
+        User currentUser = userRepository.findByEmail(auth.getName().toLowerCase())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        // Check permissions
+        if (currentUser.getRole() == Role.STAFF) {
+            throw new UserDisabledException("Access denied");
+        }
+
+        List<User> users = userRepository.findByRole(role);
+
+        if (users.isEmpty()) {
+            log.warn("No users found with role {}", role);
+            return List.of();
+        }
+
+        return users.stream().map(this::mapToResponse).toList();
+    }
+
+    public CreateUserResponse updateUserStatus(Long userId, boolean active) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null) {
+            log.error("Unauthorized access");
+            throw new UserDisabledException("Unauthorized");
+        }
+
+        User currentUser = userRepository.findByEmail(auth.getName().toLowerCase())
+                .orElseThrow(() -> new ResourceNotFoundException("Current user not found"));
+
         User targetUser = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        // Permission checks
+        if (currentUser.getRole() == Role.MANAGER) {
+            // Manager can only update staff in their branch
+            if (targetUser.getRole() != Role.STAFF ||
+                    currentUser.getBranch() == null ||
+                    targetUser.getBranch() == null ||
+                    !currentUser.getBranch().getId().equals(targetUser.getBranch().getId())) {
+                throw new UserDisabledException("Manager can only update staff in their branch");
+            }
+        } else if (currentUser.getRole() == Role.GODOWN_MANAGER) {
+            // Godown Manager can update Staff and Managers, but not Admin or other Godown Managers
+            if (targetUser.getRole() == Role.ADMIN || targetUser.getRole() == Role.GODOWN_MANAGER) {
+                throw new UserDisabledException("Godown Manager cannot update " + targetUser.getRole());
+            }
+        }
+        // Admin can update anyone
 
         targetUser.setActive(active);
         userRepository.save(targetUser);
@@ -210,4 +312,44 @@ public class UserService {
         return response;
     }
 
+    // New method to get all users based on current user's role
+    public List<CreateUserResponse> getAllUsersForCurrentUser() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null) {
+            log.error("Unauthorized access");
+            throw new UserDisabledException("Unauthorized");
+        }
+
+        User currentUser = userRepository.findByEmail(auth.getName().toLowerCase())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        List<User> users;
+
+        switch (currentUser.getRole()) {
+            case ADMIN:
+                users = userRepository.findAll();
+                break;
+
+            case GODOWN_MANAGER:
+                // Godown Manager can see all except Admin
+                users = userRepository.findByRoleNot(Role.ADMIN);
+                break;
+
+            case MANAGER:
+                // Manager can see only staff in their branch
+                if (currentUser.getBranch() == null) {
+                    throw new ResourceNotFoundException("Manager has no branch assigned");
+                }
+                users = userRepository.findByRoleAndBranchId(
+                        Role.STAFF,
+                        currentUser.getBranch().getId()
+                );
+                break;
+
+            default:
+                throw new UserDisabledException("Access denied");
+        }
+
+        return users.stream().map(this::mapToResponse).toList();
+    }
 }

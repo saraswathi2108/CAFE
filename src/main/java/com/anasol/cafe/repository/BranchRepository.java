@@ -19,4 +19,6 @@ public interface BranchRepository extends JpaRepository<Branch, Long> {
     List<Branch> findByActiveTrue();
 
     List<Branch> findAllByOrderByBranchNameAsc();
+
+
 }

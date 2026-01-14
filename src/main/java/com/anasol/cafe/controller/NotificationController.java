@@ -1,139 +1,127 @@
-//package com.anasol.cafe.controller;
-//
-//import com.anasol.cafe.dto.NotificationResponseDTO;
-//import com.anasol.cafe.service.NotificationFetchService;
-//import lombok.RequiredArgsConstructor;
-//import lombok.extern.slf4j.Slf4j;
-//import org.springframework.data.domain.Page;
-//import org.springframework.http.ResponseEntity;
-//import org.springframework.web.bind.annotation.*;
-//
-//import java.util.HashMap;
-//import java.util.Map;
-//
-//@RestController
-//@RequestMapping("/api/notifications")
-//@RequiredArgsConstructor
-//@Slf4j
-//public class NotificationController {
-//
-//    private final NotificationFetchService notificationFetchService;
-//
-//    /**
-//     * Get notifications for the currently authenticated user
-//     * Same authentication pattern as cart and order services
-//     */
-//    @GetMapping("/my")
-//    public ResponseEntity<Page<NotificationResponseDTO>> getMyNotifications(
-//            @RequestParam(defaultValue = "0") int page,
-//            @RequestParam(defaultValue = "20") int size,
-//            @RequestParam(defaultValue = "createdAt") String sortBy,
-//            @RequestParam(defaultValue = "desc") String direction,
-//            @RequestParam(required = false) Boolean unreadOnly) {
-//
-//        String methodName = "getMyNotifications";
-//        log.info("{} - Getting notifications for authenticated user. Page: {}, Size: {}, UnreadOnly: {}",
-//                methodName, page, size, unreadOnly);
-//
-//        try {
-//            Page<NotificationResponseDTO> notifications = notificationFetchService
-//                    .getMyNotifications(page, size, sortBy, direction, unreadOnly);
-//
-//            log.info("{} - Successfully retrieved {} notifications",
-//                    methodName, notifications.getNumberOfElements());
-//
-//            return ResponseEntity.ok(notifications);
-//
-//        } catch (Exception e) {
-//            log.error("{} - Error retrieving notifications", methodName, e);
-//            return ResponseEntity.internalServerError().build();
-//        }
-//    }
-//
-//    /**
-//     * Get unread notification count for the current user
-//     */
-//    @GetMapping("/my/unread-count")
-//    public ResponseEntity<Map<String, Object>> getMyUnreadCount() {
-//        String methodName = "getMyUnreadCount";
-//        log.info("{} - Getting unread notification count", methodName);
-//
-//        try {
-//            Long unreadCount = notificationFetchService.getMyUnreadNotificationCount();
-//
-//            Map<String, Object> response = new HashMap<>();
-//            response.put("unreadCount", unreadCount);
-//            response.put("timestamp", java.time.LocalDateTime.now());
-//
-//            log.info("{} - User has {} unread notifications", methodName, unreadCount);
-//            return ResponseEntity.ok(response);
-//
-//        } catch (Exception e) {
-//            log.error("{} - Error getting unread count", methodName, e);
-//            return ResponseEntity.internalServerError().build();
-//        }
-//    }
-//
-//    /**
-//     * Mark a notification as read
-//     */
-//    @PatchMapping("/{notificationId}/read")
-//    public ResponseEntity<Void> markAsRead(@PathVariable Long notificationId) {
-//        String methodName = "markAsRead";
-//        log.info("{} - Marking notification {} as read", methodName, notificationId);
-//
-//        try {
-//            notificationFetchService.markNotificationAsRead(notificationId);
-//            log.info("{} - Successfully marked notification {} as read", methodName, notificationId);
-//            return ResponseEntity.ok().build();
-//
-//        } catch (Exception e) {
-//            log.error("{} - Error marking notification as read", methodName, e);
-//            return ResponseEntity.internalServerError().build();
-//        }
-//    }
-//
-//    /**
-//     * Mark all notifications as read for current user
-//     */
-//    @PatchMapping("/mark-all-read")
-//    public ResponseEntity<Map<String, Object>> markAllAsRead() {
-//        String methodName = "markAllAsRead";
-//        log.info("{} - Marking all notifications as read", methodName);
-//
-//        try {
-//            int markedCount = notificationFetchService.markAllNotificationsAsRead();
-//
-//            Map<String, Object> response = new HashMap<>();
-//            response.put("markedCount", markedCount);
-//            response.put("message", "Successfully marked " + markedCount + " notifications as read");
-//            response.put("timestamp", java.time.LocalDateTime.now());
-//
-//            log.info("{} - Successfully marked {} notifications as read", methodName, markedCount);
-//            return ResponseEntity.ok(response);
-//
-//        } catch (Exception e) {
-//            log.error("{} - Error marking all notifications as read", methodName, e);
-//            return ResponseEntity.internalServerError().build();
-//        }
-//    }
-//
-//    /**
-//     * Delete a specific notification
-//     */
-//    @DeleteMapping("/{notificationId}")
-//    public ResponseEntity<Void> deleteNotification(@PathVariable Long notificationId) {
-//        String methodName = "deleteNotification";
-//        log.info("{} - Deleting notification {}", methodName, notificationId);
-//
-//        try {
-//            notificationFetchService.deleteNotification(notificationId);
-//            log.info("{} - Successfully deleted notification {}", methodName, notificationId);
-//            return ResponseEntity.ok().build();
-//
-//        } catch (Exception e) {
-//            log.error("{} - Error deleting notification", methodName, e);
-//            return ResponseEntity.internalServerError().build();
-//        }
-//    }
-//}
+package com.anasol.cafe.controller;
+
+import com.anasol.cafe.dto.NotificationDTO;
+import com.anasol.cafe.dto.NotificationRequest;
+import com.anasol.cafe.entity.Notification;
+import com.anasol.cafe.service.NotificationService;
+import com.anasol.cafe.service.NotificationPushService;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/notifications")
+@RequiredArgsConstructor
+@Slf4j
+
+public class NotificationController {
+
+    private final NotificationService notificationService;
+    private final NotificationPushService pushService;
+
+    @GetMapping("/unread")
+    public ResponseEntity<List<NotificationDTO>> getUnreadNotifications(
+            @RequestParam(value = "page", defaultValue = "0") Integer page,
+            @RequestParam(value = "size", defaultValue = "10") Integer size) {
+
+        log.info("Getting unread notifications for authenticated user");
+        List<NotificationDTO> notifications = notificationService.getUnreadNotifications(page, size);
+        return ResponseEntity.ok(notifications);
+    }
+
+    @GetMapping("/all")
+    public ResponseEntity<List<Notification>> getAllNotifications(
+            @RequestParam(value = "page", defaultValue = "0") Integer page,
+            @RequestParam(value = "size", defaultValue = "20") Integer size) {
+
+        log.info("Getting all notifications for authenticated user");
+        List<Notification> notifications = notificationService.getAllNotifications(page, size);
+        return ResponseEntity.ok(notifications);
+    }
+
+    @GetMapping("/unread-count")
+    public ResponseEntity<Long> getUnreadCount() {
+        log.info("Getting unread count for authenticated user");
+        Long count = notificationService.getUnreadCount();
+        return ResponseEntity.ok(count);
+    }
+
+    @PutMapping("/read/{id}")
+    public ResponseEntity<String> markAsRead(@PathVariable Long id) {
+        log.info("Marking notification as read: {}", id);
+        notificationService.markAsRead(id);
+        return ResponseEntity.ok("Notification marked as read");
+    }
+
+    @PutMapping("/star/{id}")
+    public ResponseEntity<String> starNotification(@PathVariable Long id) {
+        log.info("Starring notification: {}", id);
+        notificationService.stardMessage(id);
+        return ResponseEntity.ok("Notification starred");
+    }
+
+    @PutMapping("/unstar/{id}")
+    public ResponseEntity<String> unstarNotification(@PathVariable Long id) {
+        log.info("Unstarring notification: {}", id);
+        notificationService.unstardMessage(id);
+        return ResponseEntity.ok("Notification unstarred");
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<String> deleteNotification(@PathVariable Long id) {
+        log.info("Deleting notification: {}", id);
+        boolean deleted = notificationService.deleteMessage(id);
+        return ResponseEntity.ok("Notification deleted");
+    }
+
+    @GetMapping("/deleted")
+    public ResponseEntity<List<Notification>> getDeletedMessages() {
+        log.info("Getting deleted notifications for authenticated user");
+        List<Notification> notifications = notificationService.getDeletedMessages();
+        return ResponseEntity.ok(notifications);
+    }
+
+    // SSE endpoints for real-time notifications
+    @GetMapping("/subscribe")
+    public SseEmitter subscribe() {
+        log.info("Subscribing authenticated user to notifications");
+
+        return pushService.subscribeToCurrentUser();
+    }
+
+    @GetMapping("/unsubscribe")
+    public ResponseEntity<String> unsubscribe() {
+        log.info("Unsubscribing authenticated user from notifications");
+        String result = pushService.unsubscribeCurrentUser();
+        return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/online")
+    public ResponseEntity<Boolean> isOnline() {
+        log.info("Checking if authenticated user is online");
+        // This would check if current user is online
+        boolean isOnline = pushService.isCurrentUserOnline();
+        return ResponseEntity.ok(isOnline);
+    }
+
+    // Admin endpoints (if needed)
+    @PostMapping("/send")
+    public ResponseEntity<String> sendNotification(
+            @RequestBody NotificationRequest request) {
+        log.info("Sending notification from authenticated user");
+        notificationService.sendNotification(
+                request.getMessage(),
+                request.getSender(),
+                request.getType(),
+                request.getLink(),
+                request.getCategory(),
+                request.getKind(),
+                request.getSubject()
+        );
+        return ResponseEntity.ok("Notification sent");
+    }
+}
