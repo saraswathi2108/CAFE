@@ -20,6 +20,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -996,7 +998,7 @@ public class OrderService {
 
             String message = String.format(
                     "Your order #%d has been placed successfully. " +
-                            "Product: %s, Quantity: %d, Branch: %s. Order Date: %s",
+                            "Product: %s, Quantity: %d, Branch: %s",
                     order.getId(),
                     product.getProductName(),
                     getTotalOrderQuantity(order),
@@ -1046,7 +1048,7 @@ public class OrderService {
 
             String message = String.format(
                     "New order #%d received from %s. " +
-                            "Product: %s, Quantity: %d, Branch: %s. Order Date: %s",
+                            "Product: %s, Quantity: %d, Branch: %s",
                     order.getId(),
                     user.getEmail(),
                     product.getProductName(),
@@ -1187,25 +1189,26 @@ public class OrderService {
         }
     }
 
-    /**
-     * Send notification to user when cart order is placed
-     */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     private void sendCartOrderPlacedNotification(User user, Order order, Branch branch) {
         try {
+            // Use IST timezone directly
+            ZoneId istZone = ZoneId.of("Asia/Kolkata");
+            ZonedDateTime istDateTime = ZonedDateTime.now(istZone);
             DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd MMM yyyy HH:mm");
-            String orderDate = order.getCreatedAt().format(formatter);
+            String ictDate = istDateTime.format(formatter);
+
             int itemCount = order.getOrderItems() != null ? order.getOrderItems().size() : 0;
 
             String message = String.format(
                     "Your cart order #%d has been placed successfully. " +
                             "Items: %d, Total Quantity: %s" +
-                            ", Branch: %s. Order Date: %s",
+                            ", Branch: %s",
                     order.getId(),
                     itemCount,
                     getTotalOrderQuantity(order),
-                    branch.getBranchName(),
-                    orderDate
+                    branch.getBranchName()
+
             );
 
             notificationService.sendNotificationToUser(
@@ -1245,19 +1248,21 @@ public class OrderService {
                 return;
             }
 
+            ZoneId istZone = ZoneId.of("Asia/Kolkata");
+            ZonedDateTime istDateTime = ZonedDateTime.now(istZone);
             DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd MMM yyyy HH:mm");
-            String orderDate = order.getCreatedAt().format(formatter);
+            String ictDate = istDateTime.format(formatter);
             int itemCount = order.getOrderItems() != null ? order.getOrderItems().size() : 0;
 
             String message = String.format(
                     "New cart order #%d received from %s. " +
-                            "Items: %d, Total Quantity: %s, Branch: %s. Order Date: %s",
+                            "Items: %d, Total Quantity: %s, Branch: %s",
                     order.getId(),
                     user.getEmail(),
                     itemCount,
                     getTotalOrderQuantity(order),
-                    branch.getBranchName(),
-                    orderDate
+                    branch.getBranchName()
+
             );
 
             // Send notification to each admin

@@ -503,6 +503,8 @@ public class NotificationService {
         }
     }
 
+
+
     // Enhanced logging methods (matching CartService pattern)
     private void logEntry(String methodName, Object params) {
         log.debug("Entering {} with params: {}", methodName, params);

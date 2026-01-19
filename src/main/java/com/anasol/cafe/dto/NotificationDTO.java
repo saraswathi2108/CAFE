@@ -82,7 +82,7 @@ public class NotificationDTO {
         ZoneId sourceZone;
 
         // Option 1: If createdAt is stored in UTC (recommended)
-        sourceZone = ZoneId.of("UTC");
+        //sourceZone = ZoneId.of("UTC");
 
         // Option 2: If createdAt is stored in system default timezone
         // sourceZone = ZoneId.systemDefault();
@@ -90,7 +90,7 @@ public class NotificationDTO {
         ZoneId istZone = ZoneId.of("Asia/Kolkata");
 
         // Convert from source timezone to IST
-        ZonedDateTime sourceTime = createdAt.atZone(sourceZone);
+        ZonedDateTime sourceTime = createdAt.atZone(istZone);
         ZonedDateTime istCreatedAt = sourceTime.withZoneSameInstant(istZone);
         ZonedDateTime istNow = ZonedDateTime.now(istZone);
 
