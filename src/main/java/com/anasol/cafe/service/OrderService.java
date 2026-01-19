@@ -1570,6 +1570,8 @@ public class OrderService {
             dto.setBranchId(order.getBranchId());
             dto.setStatus(order.getStatus());
             dto.setCreatedAt(order.getCreatedAt());
+            dto.setUnit(order.getUnit());
+
 
             // Add branch info
             if (order.getBranch() != null) {

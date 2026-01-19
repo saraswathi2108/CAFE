@@ -1,5 +1,6 @@
 package com.anasol.cafe.dto;
 
+import com.anasol.cafe.entity.NetWeight;
 import com.anasol.cafe.entity.OrderStatus;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
@@ -14,6 +15,7 @@ public class OrderResponseDTO {
     private BranchResponse branchResponse;
     private OrderStatus status;
     private LocalDateTime createdAt;
+    private NetWeight unit;
 
     @JsonProperty("items")
     private List<OrderItemResponseDTO> orderItems;
