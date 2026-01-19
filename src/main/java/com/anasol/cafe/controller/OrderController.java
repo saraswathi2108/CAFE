@@ -21,7 +21,7 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/orders")
+@RequestMapping("/api/cafe/orders")
 @CrossOrigin(origins = "*")
 @Slf4j
 public class OrderController {
@@ -40,6 +40,8 @@ public class OrderController {
     public ResponseEntity<OrderResponseDTO> placeOrder(@RequestBody OrderRequestDTO orderRequest) {
         return ResponseEntity.ok(orderService.placeOrder(orderRequest));
     }
+
+
 
     // NEW: Endpoint for cart-based ordering (multiple products)
     @PreAuthorize("hasAnyRole('MANAGER', 'STAFF')")
@@ -273,7 +275,7 @@ public class OrderController {
         return ResponseEntity.ok(response);
     }
 
-    // NEW: Endpoint to get order with cart items
+
     @PreAuthorize("hasAnyRole('MANAGER', 'STAFF', 'ADMIN','GODOWN_MANAGER')")
     @GetMapping("/{orderId}/items")
     public ResponseEntity<OrderResponseDTO> getOrderWithItems(@PathVariable Long orderId) {
@@ -396,8 +398,8 @@ public class OrderController {
             List<ProductDeliveredStatsDTO> productStats = orderService.getProductDeliveredStats(year, month, null, productId);
 
             // Calculate totals
-            Long totalQuantity = productStats.stream()
-                    .mapToLong(ProductDeliveredStatsDTO::getTotalQuantityDelivered)
+            Double totalQuantity = productStats.stream()
+                    .mapToDouble(ProductDeliveredStatsDTO::getTotalQuantityDelivered)
                     .sum();
 
             // Group by branch

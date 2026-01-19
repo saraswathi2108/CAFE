@@ -12,6 +12,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.anasol.cafe.dto.ProductResponse;
 import com.anasol.cafe.entity.Category;
+import com.anasol.cafe.entity.NetWeight;
 import com.anasol.cafe.entity.Product;
 import com.anasol.cafe.exceptions.ResourceNotFoundException;
 import com.anasol.cafe.repository.ProductRepo;
@@ -32,7 +33,9 @@ public class ProductService {
 	@Autowired
 	private ProductRepo productRepo;
 
-	public Product addProduct(Long categoryId, String productName, Long quantity, MultipartFile imageFile) throws IOException {
+	// Updated to include NetWeight parameter
+	public Product addProduct(Long categoryId, String productName, Double quantity,
+							  NetWeight unit, MultipartFile imageFile) throws IOException {
 
 		Category category = categoryRepository.findById(categoryId)
 				.orElseThrow(() -> new ResourceNotFoundException("Category not found to add Product"));
@@ -41,16 +44,14 @@ public class ProductService {
 
 		product.setCategory(category);
 		product.setProductName(productName);
-		product.setQuantity(quantity);
+		product.setQuantity(quantity); // Changed from Long to Double
+		product.setUnit(unit); // Added unit
 		product.setActive(true);
 
 		String url = s3Service.uploadFile(imageFile);
 		product.setPImage(url);
 
 		return productRepo.save(product);
-
-
-
 	}
 
 	public List<ProductResponse> getAllProducts(org.springframework.data.domain.Pageable pageable) {
@@ -62,7 +63,9 @@ public class ProductService {
 					return new ProductResponse(
 							p.getId(),
 							p.getProductName(),
-							p.getQuantity(),
+							p.getQuantity(), // Now returns Double
+							p.getUnit(), // Added unit
+							//p.getFormattedQuantity(), // Added formatted quantity
 							presignedUrl,
 							p.getCategory().getCategoryName()
 					);
@@ -70,7 +73,9 @@ public class ProductService {
 				.toList();
 	}
 
-	public Product updateProduct(Long itemId, String productName, Long quanity, MultipartFile imageFile) throws IOException {
+	// Updated to include NetWeight parameter
+	public Product updateProduct(Long itemId, String productName, Double quantity,
+								 NetWeight unit, MultipartFile imageFile) throws IOException {
 
 		Product product = productRepo.findById(itemId)
 				.orElseThrow(() -> new ResourceNotFoundException("Product not found with id to update: "+ itemId));
@@ -79,8 +84,12 @@ public class ProductService {
 			product.setProductName(productName);
 		}
 
-		if(quanity != null) {
-			product.setQuantity(quanity);
+		if(quantity != null) {
+			product.setQuantity(quantity); // Changed from Long to Double
+		}
+
+		if(unit != null) {
+			product.setUnit(unit); // Added unit update
 		}
 
 		if(imageFile != null && !imageFile.isEmpty()) {
@@ -93,17 +102,14 @@ public class ProductService {
 
 			String url = s3Service.uploadFile(imageFile);
 			product.setPImage(url);
-
-
 		}
 
 		return productRepo.save(product);
-
 	}
 
 
 	public List<ProductResponse> getProductsByCategoryId(Long categoryId, Pageable pageable) {
-		
+
 		Category category = categoryRepository.findById(categoryId)
 				.orElseThrow(() -> new ResourceNotFoundException("Category Not found with id: "+ categoryId));
 
@@ -118,16 +124,14 @@ public class ProductService {
 				.map(p -> new ProductResponse(
 						p.getId(),
 						p.getProductName(),
-						p.getQuantity(),
+						p.getQuantity(), // Now returns Double
+						p.getUnit(), // Added unit
+						//p.getFormattedQuantity(), // Added formatted quantity
 						s3Service.getFileUrl(p.getPImage()),
 						p.getCategory().getCategoryName()
 				))
 				.toList();
 	}
-
-
-
-
 
 	public void deleteById(Long itemId, boolean status) {
 
@@ -162,7 +166,9 @@ public class ProductService {
 				.map(p -> new ProductResponse(
 						p.getId(),
 						p.getProductName(),
-						p.getQuantity(),
+						p.getQuantity(), // Now returns Double
+						p.getUnit(), // Added unit
+						//p.getFormattedQuantity(), // Added formatted quantity
 						s3Service.getFileUrl(p.getPImage()),
 						p.getCategory().getCategoryName()
 				))
@@ -185,7 +191,9 @@ public class ProductService {
 				.map(p -> new ProductResponse(
 						p.getId(),
 						p.getProductName(),
-						p.getQuantity(),
+						p.getQuantity(), // Now returns Double
+						p.getUnit(), // Added unit
+						//p.getFormattedQuantity(), // Added formatted quantity
 						s3Service.getFileUrl(p.getPImage()),
 						p.getCategory().getCategoryName()
 				))

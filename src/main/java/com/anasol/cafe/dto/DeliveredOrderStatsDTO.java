@@ -15,5 +15,5 @@ public class DeliveredOrderStatsDTO {
     private Integer month;
     private String monthName;
     private Long deliveredOrdersCount;
-    private Long totalProductsDelivered;
+    private Double totalProductsDelivered;
 }

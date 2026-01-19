@@ -1,5 +1,6 @@
 package com.anasol.cafe.dto;
 
+import com.anasol.cafe.entity.NetWeight;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -10,7 +11,9 @@ import lombok.NoArgsConstructor;
 public class ProductResponse {
     private Long id;
     private String productName;
-    private Long quantity;
+    private Double quantity;
+    private NetWeight unit;
+
     private String imageUrl;
     private String categoryName;
 }

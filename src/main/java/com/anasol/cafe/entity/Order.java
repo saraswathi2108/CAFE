@@ -36,10 +36,15 @@ public class Order {
     private Product product;
 
     @Column(nullable = true) // Make it nullable
-    private Long quantity;
+    private Double quantity;
 
-    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+    @Enumerated(EnumType.STRING)
+    private NetWeight unit;
+
+
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL)
     private List<OrderItem> orderItems = new ArrayList<>();
+
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

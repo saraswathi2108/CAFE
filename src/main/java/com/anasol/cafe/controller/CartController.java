@@ -3,6 +3,7 @@ package com.anasol.cafe.controller;
 import com.anasol.cafe.dto.AddToCartRequest;
 import com.anasol.cafe.dto.CartDTO;
 import com.anasol.cafe.dto.CartItemDTO;
+import com.anasol.cafe.entity.NetWeight;
 import com.anasol.cafe.service.CartService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -16,7 +17,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/carts")
+@RequestMapping("/api/cafe/carts")
 @RequiredArgsConstructor
 @CrossOrigin(origins = "*")
 
@@ -39,9 +40,10 @@ public class CartController {
         return ResponseEntity.ok(items);
     }
 
+    // CartController.java - Update the addToMyCart method
     @PostMapping("/user/items")
     public ResponseEntity<CartItemDTO> addToMyCart(
-            @Valid @RequestBody AddToCartRequest request) {
+            @Valid @RequestBody AddToCartRequest request) { // Remove @RequestParam
 
         // User will be identified from authentication token
         CartItemDTO cartItemDTO = cartService.addItemToCart(request);
@@ -75,10 +77,12 @@ public class CartController {
     @PutMapping("/user/items/{productId}/quantity")
     public ResponseEntity<CartItemDTO> updateMyItemQuantity(
             @PathVariable Long productId,
-            @RequestParam Integer quantity) {
+            @RequestParam Integer quantity,
+    @RequestParam NetWeight unit
+    ) {
 
         // User will be identified from authentication token
-        CartItemDTO updatedItem = cartService.updateItemQuantity(productId, quantity);
+        CartItemDTO updatedItem = cartService.updateItemQuantity(productId, quantity , unit);
         return ResponseEntity.ok(updatedItem);
     }
 

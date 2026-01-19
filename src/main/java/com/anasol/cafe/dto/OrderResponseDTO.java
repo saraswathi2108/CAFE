@@ -18,6 +18,6 @@ public class OrderResponseDTO {
     @JsonProperty("items")
     private List<OrderItemResponseDTO> orderItems;
 
-    private Long totalItems;
+    private Double totalItems;
     private Integer productCount;
 }

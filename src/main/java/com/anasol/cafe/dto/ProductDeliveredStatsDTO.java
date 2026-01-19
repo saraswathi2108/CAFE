@@ -16,5 +16,5 @@ public class ProductDeliveredStatsDTO {
     private Integer year;
     private Integer month;
     private String monthName;
-    private Long totalQuantityDelivered;
+    private Double totalQuantityDelivered;
 }

@@ -20,7 +20,7 @@ public class OrderItem {
     @JoinColumn(name = "product_id", nullable = false)
     private Product product;
 
-    private Long quantity;
+    private Double quantity;
 
     // You can add price field later if needed
     // private BigDecimal price;

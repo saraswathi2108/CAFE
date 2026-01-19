@@ -4,10 +4,7 @@ import com.anasol.cafe.dto.AddToCartRequest;
 import com.anasol.cafe.dto.CartDTO;
 import com.anasol.cafe.dto.CartItemDTO;
 import com.anasol.cafe.dto.ProductResponse;
-import com.anasol.cafe.entity.Cart;
-import com.anasol.cafe.entity.CartItems;
-import com.anasol.cafe.entity.Product;
-import com.anasol.cafe.entity.User;
+import com.anasol.cafe.entity.*;
 import com.anasol.cafe.exceptions.CartProcessingException;
 import com.anasol.cafe.exceptions.ResourceNotFoundException;
 import com.anasol.cafe.exceptions.ValidationException;
@@ -65,7 +62,7 @@ public class CartService {
 
     public CartItemDTO addItemToCart(AddToCartRequest request) {
         User user = getCurrentAuthenticatedUser();
-        return addItemToCart(user.getId(), request);
+        return addItemToCart(user.getId(), request );
     }
 
     public void removeItemFromCart(Long productId) {
@@ -73,9 +70,9 @@ public class CartService {
         removeItemFromCart(user.getId(), productId);
     }
 
-    public CartItemDTO updateItemQuantity(Long productId, Integer quantity) {
+    public CartItemDTO updateItemQuantity(Long productId, Integer quantity,NetWeight unit) {
         User user = getCurrentAuthenticatedUser();
-        return updateItemQuantity(user.getId(), productId, quantity);
+        return updateItemQuantity(user.getId(), productId, quantity , unit);
     }
 
     public void clearCart() {
@@ -130,6 +127,7 @@ public class CartService {
         Map<String, Object> params = new HashMap<>();
         params.put("userId", userId);
         params.put("request", request);
+        params.put("unit", request.getUnit()); // Get unit from request
         logEntry(methodName, params);
 
         try {
@@ -143,33 +141,35 @@ public class CartService {
             if (request.getQuantity() == null || request.getQuantity() <= 0) {
                 throw new ValidationException("Quantity must be greater than zero");
             }
+            if (request.getUnit() == null) { // Check unit from request
+                throw new ValidationException("Unit must be specified");
+            }
 
             Cart cart = getOrCreateCart(userId);
             Product product = productRepository.findById(request.getProductId())
                     .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + request.getProductId()));
 
+            // Find existing item with the SAME unit
             Optional<CartItems> existingItem = cartItemsRepository
-                    .findByCartIdAndProductId(cart.getId(), product.getId());
+                    .findByCartIdAndProductIdAndUnit(cart.getId(), product.getId(), request.getUnit()); // Use request.getUnit()
 
             CartItems cartItem;
             if (existingItem.isPresent()) {
                 cartItem = existingItem.get();
                 cartItem.setQuantity(cartItem.getQuantity() + request.getQuantity());
-                log.info("Updated existing cart item: cartId={}, productId={}, newQuantity={}",
-                        cart.getId(), product.getId(), cartItem.getQuantity());
+                log.info("Updated existing cart item: cartId={}, productId={}, unit={}, newQuantity={}",
+                        cart.getId(), product.getId(), request.getUnit(), cartItem.getQuantity());
             } else {
                 cartItem = new CartItems();
                 cartItem.setCart(cart);
                 cartItem.setProduct(product);
                 cartItem.setQuantity(request.getQuantity());
-                log.info("Created new cart item: cartId={}, productId={}, quantity={}",
-                        cart.getId(), product.getId(), request.getQuantity());
+                cartItem.setUnit(request.getUnit()); // Store user's selected unit from request
+                log.info("Created new cart item: cartId={}, productId={}, quantity={}, unit={}",
+                        cart.getId(), product.getId(), request.getQuantity(), request.getUnit());
             }
 
             CartItems savedItem = cartItemsRepository.save(cartItem);
-
-            logSuccess(methodName, String.format("Item added to cart: cartId=%d, productId=%d, quantity=%d",
-                    cart.getId(), product.getId(), savedItem.getQuantity()));
             return convertToDTO(savedItem);
 
         } catch (ResourceNotFoundException | ValidationException e) {
@@ -185,7 +185,6 @@ public class CartService {
             throw new CartProcessingException(errorMsg);
         }
     }
-
     @Transactional(readOnly = true)
     public List<CartItemDTO> getCartItems(Long userId) {
         String methodName = "getCartItems";
@@ -288,12 +287,14 @@ public class CartService {
         }
     }
 
-    public CartItemDTO updateItemQuantity(Long userId, Long productId, Integer quantity) {
+    public CartItemDTO updateItemQuantity(Long userId, Long productId, Integer quantity, NetWeight unit) {
+        // Add unit parameter
         String methodName = "updateItemQuantity";
         Map<String, Object> params = new HashMap<>();
         params.put("userId", userId);
         params.put("productId", productId);
         params.put("quantity", quantity);
+        params.put("unit", unit); // Add unit
         logEntry(methodName, params);
 
         try {
@@ -303,18 +304,22 @@ public class CartService {
             if (quantity == null || quantity <= 0) {
                 throw new ValidationException("Quantity must be greater than zero");
             }
+            if (unit == null) {
+                throw new ValidationException("Unit must be specified");
+            }
 
             Cart cart = cartRepository.findByUserId(userId)
                     .orElseThrow(() -> new ResourceNotFoundException("No cart found for user id: " + userId));
 
-            CartItems cartItem = cartItemsRepository.findByCartIdAndProductId(cart.getId(), productId)
-                    .orElseThrow(() -> new ResourceNotFoundException("Item not found in cart"));
+            CartItems cartItem = cartItemsRepository
+                    .findByCartIdAndProductIdAndUnit(cart.getId(), productId, unit)
+                    .orElseThrow(() -> new ResourceNotFoundException("Item not found in cart with specified unit"));
 
-            cartItem.setQuantity(Long.valueOf(quantity));
+            cartItem.setQuantity(Double.valueOf(quantity));
             CartItems updatedItem = cartItemsRepository.save(cartItem);
 
-            logSuccess(methodName, String.format("Item quantity updated: cartId=%d, productId=%d, newQuantity=%d",
-                    cart.getId(), productId, quantity));
+            logSuccess(methodName, String.format("Item quantity updated: cartId=%d, productId=%d, unit=%s, newQuantity=%d",
+                    cart.getId(), productId, unit, quantity));
             return convertToDTO(updatedItem);
         } catch (ResourceNotFoundException | ValidationException e) {
             logValidationError(methodName, e.getMessage());
@@ -414,9 +419,20 @@ public class CartService {
             dto.setId(cartItem.getId());
             dto.setProductId(cartItem.getProduct().getId());
             dto.setQuantity(cartItem.getQuantity());
-
+            dto.setUnit(cartItem.getUnit());
             if (cartItem.getProduct() != null) {
-                dto.setProductResponse(convertProductToDTO(cartItem.getProduct()));
+                ProductResponse productResponse = convertProductToDTO(cartItem.getProduct());
+
+                // Calculate formatted quantity using the user's selected unit
+                if (cartItem.getQuantity() != null && cartItem.getUnit() != null) {
+                    String formattedCartQuantity = formatQuantity(
+                            cartItem.getQuantity(),
+                            String.valueOf(cartItem.getUnit())
+                    );
+                    dto.setFormattedQuantity(formattedCartQuantity);
+                }
+
+                dto.setProductResponse(productResponse);
             }
 
             return dto;
@@ -425,10 +441,28 @@ public class CartService {
             throw new CartProcessingException("Failed to process cart item data");
         }
     }
+
+    // Helper method to format quantity
+    private String formatQuantity(Double quantity, String unit) {
+        if (quantity == null || unit == null) {
+            return null;
+        }
+
+        // Format based on the unit
+        if (quantity % 1 == 0) {
+            // If it's a whole number, show without decimals
+            return String.format("%d %s", quantity.intValue(), unit.toLowerCase());
+        } else {
+            // If it has decimal, show with 2 decimal places
+            return String.format("%.2f %s", quantity, unit.toLowerCase());
+        }
+    }
     private ProductResponse convertProductToDTO(Product product) {
         ProductResponse dto = new ProductResponse();
         dto.setId(product.getId());
         dto.setProductName(product.getProductName());
+        dto.setUnit(product.getUnit());
+        //dto.setFormattedQuantity(product.getFormattedQuantity());
         dto.setImageUrl(s3Service.getFileUrl(product.getPImage()));
         dto.setCategoryName(product.getCategory().getCategoryName());
         return dto;

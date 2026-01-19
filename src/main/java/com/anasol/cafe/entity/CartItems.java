@@ -21,7 +21,10 @@ public class CartItems {
     private Product product;
 
     @Column(name = "quantity", nullable = false)
-    private Long quantity;
+    private Double quantity;
+
+    @Enumerated(EnumType.STRING)
+    private NetWeight unit;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "cart_id", nullable = false)

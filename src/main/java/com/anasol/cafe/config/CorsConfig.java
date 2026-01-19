@@ -17,7 +17,7 @@ import java.util.stream.Collectors;
 @Configuration
 public class CorsConfig {
 
-    @Value("${app.cors.allowed-origins:}") // Default to  if missing
+    @Value("${app.cors.allowed-origins:}")
     private String allowedOrigins;
 
     @Bean

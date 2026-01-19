@@ -17,13 +17,13 @@ import org.springframework.web.multipart.MultipartFile;
 
 @CrossOrigin(origins = "*")
 @RestController
-@RequestMapping("/api/category")
+@RequestMapping("/api/cafe/category")
 public class categoryController {
 
 	@Autowired
 	private categoryService categoryService;
 
-
+	@PreAuthorize("hasAnyRole('ADMIN','GODOWN_MANAGER')")
 	@PostMapping("/addCat")
 	public ResponseEntity<?> addCategory(@RequestParam(value = "categoryName", required = false) String categoryName,
 										 @RequestParam(value = "imageFile", required = false) MultipartFile imageFile) throws IOException{
@@ -31,14 +31,14 @@ public class categoryController {
 		Category category = categoryService .addCat(categoryName, imageFile);
 		return ResponseEntity.status(HttpStatus.CREATED).body(category);
 	}
-
+	@PreAuthorize("hasAnyRole('MANAGER', 'STAFF', 'ADMIN','GODOWN_MANAGER')")
 	@GetMapping("/getAll")
 	public List<Category> getAllCat(){
 
 		return categoryService.getAll();
 	}
 
-
+	@PreAuthorize("hasAnyRole('ADMIN','GODOWN_MANAGER')")
 	@PutMapping(value = "/updateCat/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
 	public Category updateCate(@PathVariable Long id,
 							   @RequestParam (value = "categoryName", required = false) String categoryName,
@@ -49,7 +49,7 @@ public class categoryController {
 	}
 
 
-	@PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
+	@PreAuthorize("hasAnyRole('ADMIN','GODOWN_MANAGER')")
 	@DeleteMapping("/delete/{id}")
 	public String deleteCat(@PathVariable long id) {
 		categoryService.delelteCat(id);

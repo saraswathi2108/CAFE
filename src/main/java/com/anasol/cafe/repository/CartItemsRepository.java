@@ -1,6 +1,7 @@
 package com.anasol.cafe.repository;
 
 import com.anasol.cafe.entity.CartItems;
+import com.anasol.cafe.entity.NetWeight;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -35,4 +36,6 @@ public interface CartItemsRepository extends JpaRepository<CartItems, Long> {
     // Check if product exists in any cart
     @Query("SELECT COUNT(ci) > 0 FROM CartItems ci WHERE ci.product.id = :productId")
     boolean existsByProductId(@Param("productId") Long productId);
+
+    Optional<CartItems> findByCartIdAndProductIdAndUnit(Long cartId, Long productId, NetWeight unit);
 }

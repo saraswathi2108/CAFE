@@ -1010,7 +1010,7 @@ public class OrderService {
                     message,
                     "System",
                     "ORDER_PLACED",
-                    "/orders/" + order.getId(),
+                    "/api/orders/" + order.getId() + "/items",
                     "ORDERS",
                     "SUCCESS",
                     "Order Placed Successfully - #" + order.getId()
@@ -1031,10 +1031,14 @@ public class OrderService {
         try {
             // Find admin users
             List<User> adminUsers = userRepository.findByRole(Role.ADMIN);
+            List<User> wareHouseManager=userRepository.findByRole(Role.GODOWN_MANAGER);
 
             if (adminUsers.isEmpty()) {
                 log.warn("No admin users found to send notification");
                 return;
+            }
+            if(wareHouseManager.isEmpty()){
+                log.warn("No ware house manager found to send notification");
             }
 
             DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd MMM yyyy HH:mm");
@@ -1058,6 +1062,18 @@ public class OrderService {
                         message,
                         "System",
                         "NEW_ORDER",
+                        "/api/admin/orders/" + order.getId(),
+                        "ORDERS",
+                        "ALERT",
+                        "New Order Received - #" + order.getId()
+                );
+            }
+            for (User warehouseManger : wareHouseManager) {
+                notificationService.sendNotificationToUser(
+                        warehouseManger.getEmail(),
+                        message,
+                        "System",
+                        "NEW_ORDER",
                         "/admin/orders/" + order.getId(),
                         "ORDERS",
                         "ALERT",
@@ -1066,6 +1082,8 @@ public class OrderService {
             }
 
             log.info("New order notification sent to {} admin users", adminUsers.size());
+            log.info("New order notification sent to {} admin users", wareHouseManager.size());
+
         } catch (Exception e) {
             log.error("Failed to send new order notification to admin: {}", e.getMessage());
             throw e; // Re-throw to mark transaction for rollback if needed
@@ -1181,7 +1199,8 @@ public class OrderService {
 
             String message = String.format(
                     "Your cart order #%d has been placed successfully. " +
-                            "Items: %d, Total Quantity: %d, Branch: %s. Order Date: %s",
+                            "Items: %d, Total Quantity: %s" +
+                            ", Branch: %s. Order Date: %s",
                     order.getId(),
                     itemCount,
                     getTotalOrderQuantity(order),
@@ -1215,8 +1234,13 @@ public class OrderService {
         try {
             // Find admin users
             List<User> adminUsers = userRepository.findByRole(Role.ADMIN);
+            List<User> wareHouseManager= userRepository.findByRole(Role.GODOWN_MANAGER);
 
             if (adminUsers.isEmpty()) {
+                log.warn("No admin users found to send notification");
+                return;
+            }
+            if (wareHouseManager.isEmpty()) {
                 log.warn("No admin users found to send notification");
                 return;
             }
@@ -1227,7 +1251,7 @@ public class OrderService {
 
             String message = String.format(
                     "New cart order #%d received from %s. " +
-                            "Items: %d, Total Quantity: %d, Branch: %s. Order Date: %s",
+                            "Items: %d, Total Quantity: %s, Branch: %s. Order Date: %s",
                     order.getId(),
                     user.getEmail(),
                     itemCount,
@@ -1249,8 +1273,21 @@ public class OrderService {
                         "New Cart Order - #" + order.getId()
                 );
             }
+            for (User warehouseManager : wareHouseManager) {
+                notificationService.sendNotificationToUser(
+                        warehouseManager.getEmail(),
+                        message,
+                        "System",
+                        "NEW_CART_ORDER",
+                        "/admin/orders/" + order.getId(),
+                        "ORDERS",
+                        "ALERT",
+                        "New Cart Order - #" + order.getId()
+                );
+            }
 
             log.info("New cart order notification sent to {} admin users", adminUsers.size());
+            log.info("New cart order notification sent to {} admin users", wareHouseManager.size());
         } catch (Exception e) {
             log.error("Failed to send new cart order notification to admin: {}", e.getMessage());
             throw e; // Re-throw to mark transaction for rollback if needed
@@ -1276,12 +1313,12 @@ public class OrderService {
         }
     }
 
-    private Long getTotalOrderQuantity(Order order) {
+    private Double getTotalOrderQuantity(Order order) {
         if (order.getOrderItems() == null || order.getOrderItems().isEmpty()) {
-            return 0L;
+            return 0.0;
         }
         return order.getOrderItems().stream()
-                .mapToLong(OrderItem::getQuantity)
+                .mapToDouble(OrderItem::getQuantity)
                 .sum();
     }
 
@@ -1391,7 +1428,7 @@ public class OrderService {
                 row[5] != null ? ((Number) row[5]).intValue() : null, // year
                 row[6] != null ? ((Number) row[6]).intValue() : null, // month
                 (String) row[7],                  // monthName
-                row[8] != null ? ((Number) row[8]).longValue() : 0L   // totalQuantityDelivered
+                (double) (row[8] != null ? ((Number) row[8]).longValue() : 0L)   // totalQuantityDelivered
         );
     }
 
@@ -1439,11 +1476,11 @@ public class OrderService {
             response.put("monthlyStats", monthlyStats);
 
             // Calculate totals
-            Long totalOrders = monthlyStats.stream()
-                    .mapToLong(DeliveredOrderStatsDTO::getDeliveredOrdersCount)
+            Double totalOrders = monthlyStats.stream()
+                    .mapToDouble(DeliveredOrderStatsDTO::getDeliveredOrdersCount)
                     .sum();
-            Long totalProducts = monthlyStats.stream()
-                    .mapToLong(DeliveredOrderStatsDTO::getTotalProductsDelivered)
+            Double totalProducts = monthlyStats.stream()
+                    .mapToDouble(DeliveredOrderStatsDTO::getTotalProductsDelivered)
                     .sum();
 
             response.put("totalDeliveredOrders", totalOrders);
@@ -1542,7 +1579,7 @@ public class OrderService {
             // Process order items
             if (order.getOrderItems() != null && !order.getOrderItems().isEmpty()) {
                 List<OrderItemResponseDTO> itemDTOs = new ArrayList<>();
-                Long totalQuantity = 0L;
+                Double totalQuantity = 0.0;
 
                 for (OrderItem item : order.getOrderItems()) {
                     OrderItemResponseDTO itemDTO = new OrderItemResponseDTO();
@@ -1551,25 +1588,26 @@ public class OrderService {
                     itemDTO.setProductName(item.getProduct().getProductName());
                     itemDTO.setQuantity(item.getQuantity());
 
-                    // Create complete product response
+                    // Create complete product response from the actual Product
+                    Product product = item.getProduct();
                     ProductResponse productResponse = new ProductResponse();
-                    productResponse.setId(item.getProduct().getId());
-                    productResponse.setProductName(item.getProduct().getProductName());
+                    productResponse.setId(product.getId());
+                    productResponse.setProductName(product.getProductName());
+                    productResponse.setUnit(product.getUnit());
+                    //productResponse.setQuantity(product.getQuantity());
 
                     // Set image URL if available
-                    if (item.getProduct().getPImage() != null && s3Service != null) {
-                        String imageUrl = s3Service.getFileUrl(item.getProduct().getPImage());
+                    if (product.getPImage() != null && s3Service != null) {
+                        String imageUrl = s3Service.getFileUrl(product.getPImage());
                         productResponse.setImageUrl(imageUrl);
                     }
 
                     // Set category name if available
-                    if (item.getProduct().getCategory() != null) {
+                    if (product.getCategory() != null) {
                         productResponse.setCategoryName(
-                                item.getProduct().getCategory().getCategoryName()
+                                product.getCategory().getCategoryName()
                         );
                     }
-
-
 
                     itemDTO.setProductResponse(productResponse);
                     itemDTOs.add(itemDTO);
@@ -1582,7 +1620,7 @@ public class OrderService {
 
             } else {
                 dto.setOrderItems(new ArrayList<>());
-                dto.setTotalItems(0L);
+                dto.setTotalItems(0.0);
                 dto.setProductCount(0);
             }
 
@@ -1592,7 +1630,6 @@ public class OrderService {
             throw new OrderProcessingException("Failed to process order data", e);
         }
     }
-
 
     @Transactional(readOnly = true)
     public Page<OrderResponseDTO> getOrdersByDateRange(
@@ -1681,6 +1718,8 @@ public class OrderService {
         ProductResponse dto = new ProductResponse();
         dto.setId(product.getId());
         dto.setProductName(product.getProductName());
+        dto.setUnit(product.getUnit());
+        //dto.setFormattedQuantity(product.getFormattedQuantity());
         return dto;
     }
 
@@ -1699,7 +1738,7 @@ public class OrderService {
     private void restoreProductStock(Order order) {
         if (order.getProduct() != null) {
             Product product = order.getProduct();
-            Long restoredQuantity = order.getQuantity();
+            Double restoredQuantity = order.getQuantity();
             product.increaseStock(restoredQuantity);
             productRepo.save(product);
             log.info("Product stock restored: productId={}, restoredQuantity={}, newQuantity={}",

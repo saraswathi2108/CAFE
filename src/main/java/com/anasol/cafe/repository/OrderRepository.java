@@ -26,6 +26,8 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     @Query("SELECT o FROM Order o WHERE o.user.id = :userId")
     List<Order> findByUserId(Long userId);
 
+    //List<Order> findByOrderID(Long orderId);
+
     // Get all orders with user and branch data - WITH PAGINATION
     @Query("SELECT o FROM Order o " +
             "LEFT JOIN FETCH o.user " +

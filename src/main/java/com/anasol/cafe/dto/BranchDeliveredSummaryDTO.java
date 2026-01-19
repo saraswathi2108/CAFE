@@ -12,5 +12,5 @@ public class BranchDeliveredSummaryDTO {
     private String branchName;
     private String branchCode;
     private Long totalDeliveredOrders;
-    private Long totalProductsDelivered;
+    private Double totalProductsDelivered;
 }

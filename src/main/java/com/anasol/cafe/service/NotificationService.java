@@ -39,9 +39,7 @@ public class NotificationService {
     @Autowired
     private NotificationPushService pushService;
 
-    /**
-     * Get current authenticated user from SecurityContext
-     */
+
     private User getCurrentAuthenticatedUser() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null || !authentication.isAuthenticated()) {
@@ -83,9 +81,7 @@ public class NotificationService {
         sendNotificationAsync(notification);
     }
 
-    /**
-     * Send notification using current authenticated user as receiver
-     */
+
     public void sendNotification(String message, String sender, String type,
                                  String link, String category, String kind, String subject) {
 

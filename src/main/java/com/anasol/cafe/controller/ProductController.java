@@ -3,11 +3,13 @@ package com.anasol.cafe.controller;
 import java.io.IOException;
 import java.util.List;
 
+import com.anasol.cafe.entity.NetWeight;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -28,27 +30,28 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 @CrossOrigin(origins = "*")
 @RestController
-@RequestMapping("/api/product")
+@RequestMapping("/api/cafe/product")
 public class ProductController {
 
 	@Autowired
 	private ProductService productService;
 
-
+	@PreAuthorize("hasAnyRole('ADMIN','GODOWN_MANAGER')")
 	@PostMapping(value = "/add/{categoryId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
 	public String addProd(@PathVariable Long categoryId,
 						  @RequestParam("productName") String productName,
-						  @RequestParam("quantity") Long quantity,
+						  @RequestParam("quantity") Double quantity,
+						  @RequestParam( "unit")NetWeight unit,
 						  @RequestParam("imageFile") MultipartFile imageFile) throws IOException {
 
-		productService.addProduct(categoryId, productName, quantity, imageFile);
+		productService.addProduct(categoryId, productName, quantity,unit, imageFile);
 
 		log.info("New Product added Succesfully {} ", productName);
 		return "Product Added Succsfully";
 	}
 
 
-
+	@PreAuthorize("hasAnyRole('MANAGER', 'STAFF', 'ADMIN','GODOWN_MANAGER')")
 	@GetMapping("/Allprod")
 	public ResponseEntity<List<ProductResponse>> getAll(
 			@RequestParam(defaultValue = "0") int page,
@@ -58,18 +61,19 @@ public class ProductController {
 		return ResponseEntity.ok(productService.getAllProducts(pageable));
 	}
 
-
+	@PreAuthorize("hasAnyRole('ADMIN','GODOWN_MANAGER')")
 	@PutMapping(value = "/update/{itemId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
 	public String updateProduct(@PathVariable Long itemId,
 								@RequestParam(value = "productName", required = false) String productName,
-								@RequestParam(value = "quantity", required = false) Long quanity,
+								@RequestParam(value = "quantity", required = false) Double quanity,
+								@RequestParam(value = "unit", required = false)NetWeight unit,
 								@RequestParam(value = "imageFile", required = false) MultipartFile imageFile) throws IOException {
 
-		productService.updateProduct(itemId, productName, quanity, imageFile);
+		productService.updateProduct(itemId, productName, quanity, unit ,imageFile);
 		return "Product updated Siccesfulyy";
 
 	}
-
+	@PreAuthorize("hasAnyRole('MANAGER', 'STAFF', 'ADMIN','GODOWN_MANAGER')")
 	@GetMapping("/bycategoryid")
 	public List<ProductResponse> productByCat(@RequestParam Long categoryId,
 											  @RequestParam(defaultValue = "0") int page,
@@ -80,7 +84,7 @@ public class ProductController {
 
 	}
 
-
+	@PreAuthorize("hasAnyRole('ADMIN','GODOWN_MANAGER')")
 	@PutMapping("/softdelete/{itemId}")
 	public String deleteProduct(@PathVariable Long itemId, @RequestParam boolean status) {
 
@@ -89,13 +93,13 @@ public class ProductController {
 		log.info("Item deleted Succesfully");
 		return "Product deleted Succesfully";
 	}
-
+	@PreAuthorize("hasAnyRole('MANAGER', 'STAFF', 'ADMIN','GODOWN_MANAGER')")
 	@GetMapping("/inactive")
 	public List<ProductResponse> getInactiveProducts() {
 		return productService.getAllInactiveProducts();
 	}
 
-
+	@PreAuthorize("hasAnyRole('MANAGER', 'STAFF', 'ADMIN','GODOWN_MANAGER')")
 	@GetMapping("/search")
 	public List<ProductResponse> search(@RequestParam String name){
 		List<ProductResponse> products = productService.searchByName(name);

@@ -10,7 +10,6 @@
 //import org.springframework.data.redis.connection.MessageListener;
 //import org.springframework.stereotype.Component;
 //
-//
 //import com.fasterxml.jackson.databind.ObjectMapper;
 //import org.springframework.data.redis.connection.Message;
 //@Component
@@ -19,8 +18,8 @@
 //    @Autowired
 //    private ObjectMapper objectMapper;
 //
-//   @Autowired
-//   private NotificationPushService notificationController;
+//    @Autowired
+//    private NotificationPushService notificationController;
 //
 //    private static final Logger log = LoggerFactory.getLogger(EventListener.class);
 //

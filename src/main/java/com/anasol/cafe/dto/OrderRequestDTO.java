@@ -8,6 +8,6 @@ public class OrderRequestDTO {
     //private Long userId;
     private Long branchId;
 
-    private Long quantity;
+    private Double quantity;
     //private String address;
 }

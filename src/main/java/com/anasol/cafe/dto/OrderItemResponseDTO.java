@@ -8,7 +8,7 @@ public class OrderItemResponseDTO {
     private Long id;
     private Long productId;
     private String productName;
-    private Long quantity;
+    private Double quantity;
     @JsonProperty("productResponse")
     private ProductResponse productResponse;
 }

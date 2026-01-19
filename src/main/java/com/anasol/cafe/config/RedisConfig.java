@@ -24,7 +24,6 @@
 //import org.springframework.data.redis.serializer.StringRedisSerializer;
 //import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 //
-//
 //import com.fasterxml.jackson.databind.ObjectMapper;
 //import com.fasterxml.jackson.databind.SerializationFeature;
 //import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -45,35 +44,35 @@
 //    public EventListener eventListener(ObjectMapper objectMapper, NotificationPushService notificationPushService) {
 //        return new EventListener(objectMapper, notificationPushService);
 //    }
+////
+////    @Bean
+////    public LettuceConnectionFactory redisConnectionFactory() {
+////        RedisSentinelConfiguration sentinelConfig = new RedisSentinelConfiguration()
+////                .master(redisProperties.getSentinel().getMaster());
+////
+////        for (String s : redisProperties.getSentinel().getNodes()) {
+////            String[] parts = s.split(":");
+////            if (parts.length != 2) {
+////                throw new IllegalArgumentException("Invalid sentinel node: " + s);
+////            }
+////            sentinelConfig.sentinel(parts[0], Integer.parseInt(parts[1]));
+////        }
+////
+////        // This sets the password for Redis master
+////        sentinelConfig.setPassword(RedisPassword.of(redisProperties.getPassword()));
+////
+////        return new LettuceConnectionFactory(sentinelConfig);
+////    }
 //
-//    @Bean
-//    public LettuceConnectionFactory redisConnectionFactory() {
-//        RedisSentinelConfiguration sentinelConfig = new RedisSentinelConfiguration()
-//                .master(redisProperties.getSentinel().getMaster());
+//     @Bean
+//     public LettuceConnectionFactory redisConnectionFactory() {
+//         RedisStandaloneConfiguration redisConfig = new RedisStandaloneConfiguration();
+//         redisConfig.setHostName("hrms.anasolconsultancyservices.com");
+//         redisConfig.setPort(6378);
+//         redisConfig.setPassword(RedisPassword.of("RedisPasswordMaster")); // your Redis password
 //
-//        for (String s : redisProperties.getSentinel().getNodes()) {
-//            String[] parts = s.split(":");
-//            if (parts.length != 2) {
-//                throw new IllegalArgumentException("Invalid sentinel node: " + s);
-//            }
-//            sentinelConfig.sentinel(parts[0], Integer.parseInt(parts[1]));
-//        }
-//
-//        // This sets the password for Redis master
-//        sentinelConfig.setPassword(RedisPassword.of(redisProperties.getPassword()));
-//
-//        return new LettuceConnectionFactory(sentinelConfig);
-//    }
-//
-//    // @Bean
-//    // public LettuceConnectionFactory redisConnectionFactory() {
-//    //     RedisStandaloneConfiguration redisConfig = new RedisStandaloneConfiguration();
-//    //     redisConfig.setHostName("hrms.anasolconsultancyservices.com");
-//    //     redisConfig.setPort(6378);
-//    //     redisConfig.setPassword(RedisPassword.of("RedisPasswordMaster")); // your Redis password
-//
-//    //     return new LettuceConnectionFactory(redisConfig);
-//    // }
+//         return new LettuceConnectionFactory(redisConfig);
+//     }
 //
 //
 //    @Bean
