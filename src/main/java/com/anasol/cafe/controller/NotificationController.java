@@ -34,12 +34,12 @@ public class NotificationController {
     }
 
     @GetMapping("/all")
-    public ResponseEntity<List<Notification>> getAllNotifications(
+    public ResponseEntity<List<NotificationDTO>> getAllNotifications(
             @RequestParam(value = "page", defaultValue = "0") Integer page,
             @RequestParam(value = "size", defaultValue = "20") Integer size) {
 
         log.info("Getting all notifications for authenticated user");
-        List<Notification> notifications = notificationService.getAllNotifications(page, size);
+        List<NotificationDTO> notifications = notificationService.getAllNotifications(page, size);
         return ResponseEntity.ok(notifications);
     }
 

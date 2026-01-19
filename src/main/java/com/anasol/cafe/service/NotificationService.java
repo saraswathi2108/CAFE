@@ -21,7 +21,9 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
-
+import java.time.ZonedDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -62,6 +64,9 @@ public class NotificationService {
         User receiverUser = userRepository.findByEmail(receiverEmail)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + receiverEmail));
 
+        // Use IST timezone
+        ZonedDateTime istNow = ZonedDateTime.now(ZoneId.of("Asia/Kolkata"));
+
         Notification notification = Notification.builder()
                 .receiver(receiverEmail)
                 .message(message)
@@ -69,13 +74,13 @@ public class NotificationService {
                 .type(type)
                 .link(link)
                 .read(false)
-                .createdAt(LocalDateTime.now())
+                .createdAt(istNow.toLocalDateTime()) // Convert to LocalDateTime for storage
                 .category(category)
                 .kind(kind)
                 .subject(subject)
                 .stared(false)
                 .deleted(false)
-                .user(receiverUser)  // Set the user relationship
+                .user(receiverUser)
                 .build();
 
         sendNotificationAsync(notification);
@@ -91,6 +96,9 @@ public class NotificationService {
         log.info("Sending notification to authenticated user: {}, type: {}, category: {}",
                 receiverEmail, type, category);
 
+        // Use IST timezone
+        ZonedDateTime istNow = ZonedDateTime.now(ZoneId.of("Asia/Kolkata"));
+
         Notification notification = Notification.builder()
                 .receiver(receiverEmail)
                 .message(message)
@@ -98,18 +106,17 @@ public class NotificationService {
                 .type(type)
                 .link(link)
                 .read(false)
-                .createdAt(LocalDateTime.now())
+                .createdAt(istNow.toLocalDateTime()) // Convert to LocalDateTime
                 .category(category)
                 .kind(kind)
                 .subject(subject)
                 .stared(false)
                 .deleted(false)
-                .user(currentUser)  // Set the user relationship
+                .user(currentUser)
                 .build();
 
         sendNotificationAsync(notification);
     }
-
     @Async("notificationExecutor")
     @Transactional
     public void sendNotificationAsync(Notification notification) {
@@ -163,14 +170,16 @@ public class NotificationService {
 
         try {
             User currentUser = getCurrentAuthenticatedUser();
-            Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
+            Pageable pageable = PageRequest.of(page, size,
+                    Sort.by("createdAt").descending() // Ensure descending order
+            );
+
             Page<Notification> notifications = notificationRepository
                     .findByReceiverAndReadFalse(currentUser.getEmail(), pageable);
 
             logSuccess(methodName, "Retrieved " + notifications.getContent().size() +
                     " unread notifications for user: " + currentUser.getEmail());
 
-            // Convert to DTOs
             return notifications.getContent().stream()
                     .map(this::convertToDTO)
                     .collect(Collectors.toList());
@@ -190,21 +199,30 @@ public class NotificationService {
     }
 
     private NotificationDTO convertToDTO(Notification notification) {
-        NotificationDTO dto = new NotificationDTO();
-        dto.setId(notification.getId());
-        dto.setReceiver(notification.getReceiver());
-        dto.setMessage(notification.getMessage());
-        dto.setSender(notification.getSender());
-        dto.setType(notification.getType());
-        dto.setLink(notification.getLink());
-        dto.setRead(notification.isRead());
-        dto.setCreatedAt(notification.getCreatedAt());
-        dto.setCategory(notification.getCategory());
-        dto.setKind(notification.getKind());
-        dto.setSubject(notification.getSubject());
-        dto.setStared(notification.isStared());
-        dto.setDeleted(notification.isDeleted());
-        return dto;
+        try {
+            NotificationDTO dto = new NotificationDTO();
+            dto.setId(notification.getId());
+            dto.setReceiver(notification.getReceiver());
+            dto.setMessage(notification.getMessage());
+            dto.setSender(notification.getSender());
+            dto.setType(notification.getType());
+            dto.setLink(notification.getLink());
+            dto.setRead(notification.isRead());
+            dto.setCreatedAt(notification.getCreatedAt());
+            dto.setCategory(notification.getCategory());
+            dto.setKind(notification.getKind());
+            dto.setSubject(notification.getSubject());
+            dto.setStared(notification.isStared());
+            dto.setDeleted(notification.isDeleted());
+
+            // Calculate IST formatted time and time ago
+            dto.calculateTimeAgo();
+
+            return dto;
+        } catch (Exception e) {
+            log.error("Error converting notification to DTO: {}", notification.getId(), e);
+            throw new RuntimeException("Failed to convert notification to DTO");
+        }
     }
 
     /**
@@ -312,24 +330,28 @@ public class NotificationService {
         }
     }
 
-    /**
-     * Get all notifications for current authenticated user
-     */
     @Cacheable(value = "getAllNotifications", key = "#page + '_' + #size")
     @Transactional()
-    public List<Notification> getAllNotifications(Integer page, Integer size) {
+    public List<NotificationDTO> getAllNotifications(Integer page, Integer size) {
         String methodName = "getAllNotifications";
         logEntry(methodName, "page=" + page + ", size=" + size);
 
         try {
             User currentUser = getCurrentAuthenticatedUser();
-            Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
+            Pageable pageable = PageRequest.of(page, size,
+                    Sort.by("createdAt").descending() // This should put recent first
+            );
+
             Page<Notification> notifications = notificationRepository
                     .findByReceiverAndDeletedFalse(currentUser.getEmail(), pageable);
 
             logSuccess(methodName, "Retrieved " + notifications.getContent().size() +
                     " notifications for user: " + currentUser.getEmail());
-            return notifications.getContent();
+
+            // Convert to DTOs before returning
+            return notifications.getContent().stream()
+                    .map(this::convertToDTO)
+                    .collect(Collectors.toList());
 
         } catch (ResourceNotFoundException | ValidationException e) {
             logValidationError(methodName, e.getMessage());
@@ -344,7 +366,6 @@ public class NotificationService {
             throw new RuntimeException(errorMsg);
         }
     }
-
     /**
      * Mark notification as read (must belong to current user)
      */
