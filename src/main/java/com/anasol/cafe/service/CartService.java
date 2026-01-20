@@ -127,7 +127,7 @@ public class CartService {
         Map<String, Object> params = new HashMap<>();
         params.put("userId", userId);
         params.put("request", request);
-        params.put("unit", request.getUnit()); // Get unit from request
+        params.put("unit", request.getUnit());
         logEntry(methodName, params);
 
         try {
@@ -141,7 +141,7 @@ public class CartService {
             if (request.getQuantity() == null || request.getQuantity() <= 0) {
                 throw new ValidationException("Quantity must be greater than zero");
             }
-            if (request.getUnit() == null) { // Check unit from request
+            if (request.getUnit() == null) {
                 throw new ValidationException("Unit must be specified");
             }
 
@@ -149,13 +149,44 @@ public class CartService {
             Product product = productRepository.findById(request.getProductId())
                     .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + request.getProductId()));
 
+            // Check if product has sufficient stock
+            if (!product.hasSufficientStock(request.getQuantity())) {
+                String errorMsg = String.format("Insufficient stock for product: %s. Available: %.2f %s, Requested: %.2f %s",
+                        product.getProductName(),
+                        product.getQuantity(),
+                        product.getUnit() != null ? product.getUnit().toString().toLowerCase() : "units",
+                        request.getQuantity(),
+                        request.getUnit().toString().toLowerCase());
+                logValidationError(methodName, errorMsg);
+                throw new ValidationException(errorMsg);
+            }
+
             // Find existing item with the SAME unit
             Optional<CartItems> existingItem = cartItemsRepository
-                    .findByCartIdAndProductIdAndUnit(cart.getId(), product.getId(), request.getUnit()); // Use request.getUnit()
+                    .findByCartIdAndProductIdAndUnit(cart.getId(), product.getId(), request.getUnit());
 
             CartItems cartItem;
             if (existingItem.isPresent()) {
                 cartItem = existingItem.get();
+
+                // Check total quantity (existing + new) against available stock
+                Double totalRequestedQuantity = cartItem.getQuantity() + request.getQuantity();
+                if (!product.hasSufficientStock(totalRequestedQuantity)) {
+                    String errorMsg = String.format("Insufficient stock for product: %s. Available: %.2f %s, " +
+                                    "Existing in cart: %.2f %s, Additional requested: %.2f %s, Total needed: %.2f %s",
+                            product.getProductName(),
+                            product.getQuantity(),
+                            product.getUnit() != null ? product.getUnit().toString().toLowerCase() : "units",
+                            cartItem.getQuantity(),
+                            cartItem.getUnit() != null ? cartItem.getUnit().toString().toLowerCase() : "units",
+                            request.getQuantity(),
+                            request.getUnit().toString().toLowerCase(),
+                            totalRequestedQuantity,
+                            request.getUnit().toString().toLowerCase());
+                    logValidationError(methodName, errorMsg);
+                    throw new ValidationException(errorMsg);
+                }
+
                 cartItem.setQuantity(cartItem.getQuantity() + request.getQuantity());
                 log.info("Updated existing cart item: cartId={}, productId={}, unit={}, newQuantity={}",
                         cart.getId(), product.getId(), request.getUnit(), cartItem.getQuantity());
@@ -164,7 +195,7 @@ public class CartService {
                 cartItem.setCart(cart);
                 cartItem.setProduct(product);
                 cartItem.setQuantity(request.getQuantity());
-                cartItem.setUnit(request.getUnit()); // Store user's selected unit from request
+                cartItem.setUnit(request.getUnit());
                 log.info("Created new cart item: cartId={}, productId={}, quantity={}, unit={}",
                         cart.getId(), product.getId(), request.getQuantity(), request.getUnit());
             }
@@ -185,6 +216,7 @@ public class CartService {
             throw new CartProcessingException(errorMsg);
         }
     }
+
     @Transactional(readOnly = true)
     public List<CartItemDTO> getCartItems(Long userId) {
         String methodName = "getCartItems";
@@ -288,13 +320,12 @@ public class CartService {
     }
 
     public CartItemDTO updateItemQuantity(Long userId, Long productId, Integer quantity, NetWeight unit) {
-        // Add unit parameter
         String methodName = "updateItemQuantity";
         Map<String, Object> params = new HashMap<>();
         params.put("userId", userId);
         params.put("productId", productId);
         params.put("quantity", quantity);
-        params.put("unit", unit); // Add unit
+        params.put("unit", unit);
         logEntry(methodName, params);
 
         try {
@@ -310,6 +341,22 @@ public class CartService {
 
             Cart cart = cartRepository.findByUserId(userId)
                     .orElseThrow(() -> new ResourceNotFoundException("No cart found for user id: " + userId));
+
+            // Get product to check stock
+            Product product = productRepository.findById(productId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
+
+            // Check if requested quantity is available
+            if (!product.hasSufficientStock(Double.valueOf(quantity))) {
+                String errorMsg = String.format("Insufficient stock for product: %s. Available: %.2f %s, Requested: %d %s",
+                        product.getProductName(),
+                        product.getQuantity(),
+                        product.getUnit() != null ? product.getUnit().toString().toLowerCase() : "units",
+                        quantity,
+                        unit.toString().toLowerCase());
+                logValidationError(methodName, errorMsg);
+                throw new ValidationException(errorMsg);
+            }
 
             CartItems cartItem = cartItemsRepository
                     .findByCartIdAndProductIdAndUnit(cart.getId(), productId, unit)

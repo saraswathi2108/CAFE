@@ -8,6 +8,7 @@ import com.anasol.cafe.service.NotificationPushService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -22,7 +23,7 @@ public class NotificationController {
 
     private final NotificationService notificationService;
     private final NotificationPushService pushService;
-
+    @PreAuthorize("hasAnyRole('MANAGER', 'STAFF', 'ADMIN','GODOWN_MANAGER')")
     @GetMapping("/unread")
     public ResponseEntity<List<NotificationDTO>> getUnreadNotifications(
             @RequestParam(value = "page", defaultValue = "0") Integer page,
@@ -42,7 +43,7 @@ public class NotificationController {
         List<NotificationDTO> notifications = notificationService.getAllNotifications(page, size);
         return ResponseEntity.ok(notifications);
     }
-
+    @PreAuthorize("hasAnyRole('MANAGER', 'STAFF', 'ADMIN','GODOWN_MANAGER')")
     @GetMapping("/unread-count")
     public ResponseEntity<Long> getUnreadCount() {
         log.info("Getting unread count for authenticated user");

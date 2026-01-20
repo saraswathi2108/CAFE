@@ -2,6 +2,7 @@ package com.anasol.cafe.exceptions;
 
 
 
+import com.anasol.cafe.dto.ErrorResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -109,6 +110,17 @@ public class GlobalExceptionHandler {
     	
     	ErrorResponseDTO errorResponseDTO = new ErrorResponseDTO(resourceNotFoundException.getMessage(), HttpStatus.NOT_FOUND, HttpStatus.NOT_FOUND.value());
     	return errorResponseDTO;
+    }
+
+    @ExceptionHandler(InsufficientStockException.class)
+    public ResponseEntity<ErrorResponse> handleInsufficientStockException(InsufficientStockException ex) {
+        ErrorResponse errorResponse = new ErrorResponse(
+                "INSUFFICIENT_STOCK",
+                ex.getMessage(),
+                HttpStatus.BAD_REQUEST.value(),
+                LocalDateTime.now()
+        );
+        return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
     }
 }
 

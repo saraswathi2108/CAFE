@@ -24,9 +24,9 @@ public class Product {
     @JoinColumn(name = "category_id")
     private Category category;
 
-    public boolean hasSufficientStock(Double requestedQuantity) {
-        return this.quantity >= requestedQuantity;
-    }
+//    public boolean hasSufficientStock(Double requestedQuantity) {
+//        return this.quantity >= requestedQuantity;
+//    }
 
     public void reduceStock(Double requestedQuantity) {
         if (requestedQuantity > this.quantity) {
@@ -53,6 +53,14 @@ public class Product {
             default:
                 return String.format("%.0f", quantity);
         }
+    }
+
+    // In Product entity
+    public boolean hasSufficientStock(Double requestedQuantity) {
+        if (this.quantity == null || requestedQuantity == null) {
+            return false;
+        }
+        return this.quantity >= requestedQuantity;
     }
 
 

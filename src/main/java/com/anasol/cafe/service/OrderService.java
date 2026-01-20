@@ -102,12 +102,17 @@ public class OrderService {
             log.info("Product stock reduced: productId={}, newQuantity={}",
                     product.getId(), product.getQuantity());
 
-            // Create order with OrderItems
+            // Create order with OrderItems - Use IST timezone
             Order order = new Order();
             order.setUser(user);
             order.setBranchId(orderRequest.getBranchId());
             order.setStatus(OrderStatus.PENDING);
-            order.setCreatedAt(LocalDateTime.now());
+
+            // Use IST timezone
+            ZoneId istZone = ZoneId.of("Asia/Kolkata");
+            ZonedDateTime istDateTime = ZonedDateTime.now(istZone);
+            // Store as LocalDateTime but with IST time
+            order.setCreatedAt(istDateTime.toLocalDateTime());
 
             // Create and add OrderItem
             OrderItem orderItem = new OrderItem();
