@@ -18,10 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
+import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -115,13 +112,15 @@ public class OrderService {
             ZoneId istZone = ZoneId.of("Asia/Kolkata");
             ZonedDateTime istNow = ZonedDateTime.now(istZone);
 
-            // Store as LocalDateTime in IST
-            order.setCreatedAt(istNow.toLocalDateTime());
+            LocalDateTime utcNow = LocalDateTime.now(ZoneOffset.UTC);
 
+            LocalDateTime istTime = utcNow.plusHours(5).plusMinutes(30);
+
+            order.setCreatedAt(istTime);
             // Keep timezone info for reference
             order.setTimezone("Asia/Kolkata");
 
-            // For debugging - log what we're storing
+
             log.info("Setting order time - IST: {}, LocalDateTime: {}",
                     istNow, istNow.toLocalDateTime());
 
