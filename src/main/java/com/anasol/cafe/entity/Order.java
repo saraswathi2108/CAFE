@@ -5,6 +5,8 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -53,9 +55,19 @@ public class Order {
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
+    @Column(name = "timezone")
+    private String timezone = "Asia/Kolkata";
+
     // Helper method
     public void addOrderItem(OrderItem item) {
         orderItems.add(item);
         item.setOrder(this);
+    }
+
+    public ZonedDateTime getCreatedAtInIST() {
+        if (this.createdAt == null || this.timezone == null) {
+            return null;
+        }
+        return this.createdAt.atZone(ZoneId.of(this.timezone));
     }
 }

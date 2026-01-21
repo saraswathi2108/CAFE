@@ -44,6 +44,9 @@ public class OrderService {
 
     private final NotificationService notificationService;
 
+    public static final ZoneId IST_ZONE = ZoneId.of("Asia/Kolkata");
+    public static final ZoneId UTC_ZONE = ZoneId.of("UTC");
+
     // Helper method to get current authenticated user
     private User getCurrentAuthenticatedUser() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
@@ -97,22 +100,30 @@ public class OrderService {
 
             // Reduce product stock
             product.reduceStock(orderRequest.getQuantity());
-            productRepo.save(product); // Save updated product quantity
+            productRepo.save(product);
 
             log.info("Product stock reduced: productId={}, newQuantity={}",
                     product.getId(), product.getQuantity());
 
-            // Create order with OrderItems - Use IST timezone
+            // Create order with OrderItems
             Order order = new Order();
             order.setUser(user);
             order.setBranchId(orderRequest.getBranchId());
             order.setStatus(OrderStatus.PENDING);
 
-            // Use IST timezone
+            // FIX: Set IST timezone explicitly
             ZoneId istZone = ZoneId.of("Asia/Kolkata");
-            ZonedDateTime istDateTime = ZonedDateTime.now(istZone);
-            // Store as LocalDateTime but with IST time
-            order.setCreatedAt(istDateTime.toLocalDateTime());
+            ZonedDateTime istNow = ZonedDateTime.now(istZone);
+
+            // Store as LocalDateTime in IST
+            order.setCreatedAt(istNow.toLocalDateTime());
+
+            // Keep timezone info for reference
+            order.setTimezone("Asia/Kolkata");
+
+            // For debugging - log what we're storing
+            log.info("Setting order time - IST: {}, LocalDateTime: {}",
+                    istNow, istNow.toLocalDateTime());
 
             // Create and add OrderItem
             OrderItem orderItem = new OrderItem();
@@ -158,6 +169,8 @@ public class OrderService {
 
         return convertToDTO(savedOrder);
     }
+
+
 
 
     @Transactional
