@@ -159,7 +159,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             "FROM Order o " +
             "JOIN o.branch b " +
             "LEFT JOIN o.orderItems oi " +
-            "WHERE o.status = 'DELIVERED' " +
+            "WHERE o.status = 'SHIPPED' " +
             "AND (:year IS NULL OR YEAR(o.createdAt) = :year) " +
             "AND (:month IS NULL OR MONTH(o.createdAt) = :month) " +
             "AND (:branchId IS NULL OR b.id = :branchId) " +
