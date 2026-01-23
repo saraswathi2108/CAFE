@@ -129,6 +129,7 @@ public class OrderService {
             orderItem.setProduct(product);
             orderItem.setQuantity(orderRequest.getQuantity());
             orderItem.setOrder(order);
+            orderItem.setUnit(product.getUnit());
 
             // Initialize order items list and add item
             order.setOrderItems(new ArrayList<>());
@@ -1635,6 +1636,7 @@ public class OrderService {
 
                     itemDTO.setProductResponse(productResponse);
                     itemDTOs.add(itemDTO);
+                    itemDTO.setUnit(item.getUnit());
                     totalQuantity += item.getQuantity();
                 }
 
@@ -1652,6 +1654,681 @@ public class OrderService {
         } catch (Exception e) {
             log.error("Error converting order to DTO: orderId={}", order.getId(), e);
             throw new OrderProcessingException("Failed to process order data", e);
+        }
+    }
+
+
+
+    private void validateEditRequest(OrderEditRequestDTO editRequest) {
+        if (editRequest == null) {
+            throw new ValidationException("Edit request cannot be null");
+        }
+
+        if (editRequest.getOrderId() == null) {
+            throw new ValidationException("Order ID cannot be null");
+        }
+
+        if (editRequest.getProductId() == null) {
+            throw new ValidationException("Product ID cannot be null");
+        }
+
+        if (editRequest.getNewQuantity() == null) {
+            throw new ValidationException("New quantity cannot be null");
+        }
+
+        if (editRequest.getNewQuantity() <= 0) {
+            throw new ValidationException("New quantity must be greater than zero");
+        }
+    }
+
+    @Transactional
+    public OrderResponseDTO editOrderQuantity(EditOrderQuantityDTO editRequest) {
+        String methodName = "editOrderQuantity";
+        Map<String, Object> params = new HashMap<>();
+        params.put("editRequest", editRequest);
+        logEntry(methodName, params);
+
+        Order updatedOrder = null;
+        OrderStatus oldStatus = null;
+        Double oldQuantity = null;
+        NetWeight oldUnit = null;
+        Product product = null;
+        Long orderId = editRequest.getOrderId();
+
+        try {
+            // Validate input
+            if (editRequest == null) {
+                throw new ValidationException("Edit request cannot be null");
+            }
+
+            if (editRequest.getOrderId() == null) {
+                throw new ValidationException("Order ID cannot be null");
+            }
+
+            if (editRequest.getProductId() == null) {
+                throw new ValidationException("Product ID cannot be null");
+            }
+
+            if (editRequest.getNewQuantity() == null || editRequest.getNewQuantity() <= 0) {
+                throw new ValidationException("New quantity must be greater than zero");
+            }
+
+            // Fetch order with items
+            Order order = orderRepo.findByIdWithOrderItems(orderId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
+
+            // Validate order status - only allow editing PENDING or APPROVED orders
+            if (order.getStatus() != OrderStatus.PENDING && order.getStatus() != OrderStatus.APPROVED) {
+                throw new ValidationException("Cannot edit order with status: " + order.getStatus() +
+                        ". Only PENDING or APPROVED orders can be edited.");
+            }
+
+            oldStatus = order.getStatus();
+
+            // Find the specific order item to edit
+            OrderItem itemToEdit = order.getOrderItems().stream()
+                    .filter(item -> item.getProduct().getId().equals(editRequest.getProductId()))
+                    .findFirst()
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Product with id " + editRequest.getProductId() + " not found in order " + orderId));
+
+            product = itemToEdit.getProduct();
+            oldQuantity = itemToEdit.getQuantity();
+            oldUnit = product.getUnit(); // Get unit from product, not from item
+            Double newQuantity = editRequest.getNewQuantity();
+            NetWeight newUnit = editRequest.getNewUnit() != null ? editRequest.getNewUnit() : oldUnit;
+
+            log.info("Editing order: orderId={}, productId={}, productName={}, " +
+                            "oldQuantity={}{}, newQuantity={}{}",
+                    orderId, product.getId(), product.getProductName(),
+                    oldQuantity, oldUnit, newQuantity, newUnit);
+
+            // If both quantity and unit are unchanged, no action needed
+            if (oldQuantity.equals(newQuantity) && oldUnit.equals(newUnit)) {
+                log.info("Quantity and unit unchanged, no edits needed");
+                return convertToDTO(order);
+            }
+
+            // Handle unit conversion if unit is changing
+            boolean unitChanged = !oldUnit.equals(newUnit);
+
+            if (unitChanged) {
+                // Convert to base unit for stock calculation
+                Double oldQuantityInBaseUnit = convertToBaseUnit(oldQuantity, oldUnit);
+                Double newQuantityInBaseUnit = convertToBaseUnit(newQuantity, newUnit);
+
+                // Calculate difference in base units
+                Double quantityDifferenceInBaseUnit = newQuantityInBaseUnit - oldQuantityInBaseUnit;
+
+                log.debug("Unit conversion - Old: {}{} = {} base units, New: {}{} = {} base units, Difference: {}",
+                        oldQuantity, oldUnit, oldQuantityInBaseUnit,
+                        newQuantity, newUnit, newQuantityInBaseUnit,
+                        quantityDifferenceInBaseUnit);
+
+                // Handle stock adjustment based on quantity change in base units
+                adjustProductStock(product, quantityDifferenceInBaseUnit);
+
+            } else {
+                // Same unit, simple quantity difference
+                Double quantityDifference = newQuantity - oldQuantity;
+                log.debug("Same unit, quantity difference: {}", quantityDifference);
+
+                // Handle stock adjustment
+                adjustProductStock(product, quantityDifference);
+            }
+
+            // Save updated product
+            productRepo.save(product);
+
+            // Update order item quantity
+            itemToEdit.setQuantity(newQuantity);
+
+            // Update product unit if changed
+            if (unitChanged) {
+                product.setUnit(newUnit);
+                productRepo.save(product);
+                log.info("Product unit updated: productId={}, newUnit={}", product.getId(), newUnit);
+            }
+
+            // Update order unit if this is a single-item order
+            if (order.getOrderItems().size() == 1) {
+                order.setUnit(newUnit);
+            }
+
+            updatedOrder = orderRepo.save(order);
+
+            // Refresh the order with all relationships
+            updatedOrder = orderRepo.findByIdWithOrderItems(orderId)
+                    .orElse(updatedOrder);
+
+            logSuccess(methodName, String.format(
+                    "Order quantity updated successfully. Order: %d, Product: %s, " +
+                            "Old: %s%s, New: %s%s",
+                    orderId, product.getProductName(),
+                    oldQuantity, oldUnit, newQuantity, newUnit));
+
+        } catch (ResourceNotFoundException | ValidationException e) {
+            logValidationError(methodName, e.getMessage());
+            throw e;
+        } catch (ObjectOptimisticLockingFailureException e) {
+            String errorMsg = "Order or product was modified by another transaction. Please try again.";
+            logOptimisticLockError(methodName, orderId, e);
+            throw new OrderProcessingException(errorMsg, e);
+        } catch (DataAccessException e) {
+            String errorMsg = "Failed to edit order quantity due to database error";
+            logDatabaseError(methodName, errorMsg, e);
+            throw new OrderProcessingException(errorMsg, e);
+        } catch (Exception e) {
+            String errorMsg = "Failed to edit order quantity due to unexpected error";
+            logUnexpectedError(methodName, errorMsg, e);
+            throw new OrderProcessingException(errorMsg, e);
+        }
+
+//        // Send notification AFTER transaction completes
+//        if (updatedOrder != null && oldQuantity != null && product != null) {
+//            try {
+//                sendOrderQuantityEditedNotification(updatedOrder, product,
+//                        oldQuantity, oldUnit, editRequest.getNewQuantity(),
+//                        editRequest.getNewUnit() != null ? editRequest.getNewUnit() : oldUnit);
+//            } catch (Exception e) {
+//                log.error("Failed to send quantity edit notification for order #{}: {}", orderId, e.getMessage());
+//                // Don't throw exception - notifications are secondary
+//            }
+//        }
+
+        return convertToDTO(updatedOrder);
+    }
+    @Transactional
+    public OrderResponseDTO editOrder(Long orderId, EditOrderQuantityDTO editRequest) {
+        String methodName = "editOrder";
+        logEntry(methodName, Map.of("orderId", orderId, "editRequest", editRequest));
+
+        Order updatedOrder = null;
+
+        try {
+            // Validate input
+            validateEditRequest(editRequest);
+
+            // Get the order with items
+            Order order = orderRepo.findByIdWithOrderItems(orderId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Order Not Found with Id: " + orderId));
+
+            // Validate order status
+            validateOrderStatusForEditing(order);
+
+            // Find the order item to edit
+            OrderItem orderItem;
+
+            if (editRequest.getProductId() != null) {
+                // If productId is specified, find that specific order item
+                orderItem = findOrderItemByProductId(order, editRequest.getProductId());
+            } else {
+                // Otherwise, get the first order item (for backward compatibility)
+                orderItem = getFirstOrderItem(order);
+            }
+
+            Product product = orderItem.getProduct();
+
+            // Store old values for logging
+            Double oldQuantity = orderItem.getQuantity();
+            NetWeight oldUnit = orderItem.getUnit();
+            Double newQuantity = editRequest.getNewQuantity();
+            NetWeight newUnit = editRequest.getNewUnit();
+
+            log.info("Editing order - Order#{} Product#{}: productName={}, oldQuantity={}{}, newQuantity={}{}",
+                    orderId, product.getId(), product.getProductName(),
+                    //oldQuantity, oldUnit.getUnit(),
+                    newQuantity, newUnit.getUnit());
+
+            // Get product with lock
+            Product lockedProduct = productRepo.findByIdWithLock(product.getId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Product Not Found with Id: " + product.getId()));
+
+            // Calculate stock adjustment in product's unit
+            Double stockAdjustment = calculateStockAdjustment(
+                    oldQuantity, oldUnit,
+                    newQuantity, newUnit,
+                    lockedProduct.getUnit()
+            );
+
+            log.info("Stock adjustment needed: {} {}", stockAdjustment, lockedProduct.getUnit().getUnit());
+
+            // Adjust product stock
+            adjustProductStock(lockedProduct, stockAdjustment);
+
+            // Update order item
+            orderItem.setQuantity(newQuantity);
+            orderItem.setUnit(newUnit);
+
+            // Save the order
+            updatedOrder = orderRepo.save(order);
+
+            // Reload to get updated data
+            updatedOrder = orderRepo.findByIdWithOrderItems(orderId)
+                    .orElse(updatedOrder);
+
+            log.info("Editing order - AFTER: orderId={}, productId={}, quantity={}{}",
+                    orderId, product.getId(), orderItem.getQuantity(), orderItem.getUnit().getUnit());
+
+//            // Send notification
+//            sendOrderEditNotification(updatedOrder, product, oldQuantity, oldUnit,
+//                    newQuantity, newUnit);
+
+            return convertToDTO(updatedOrder);
+
+        } catch (ResourceNotFoundException | ValidationException | IllegalArgumentException e) {
+            logValidationError(methodName, e.getMessage());
+            throw e;
+        } catch (Exception e) {
+            String errorMsg = "Failed to edit order due to unexpected error";
+            logUnexpectedError(methodName, errorMsg, e);
+            throw new OrderProcessingException(errorMsg, e);
+        }
+    }
+
+    // Helper method to find order item by product ID
+    private OrderItem findOrderItemByProductId(Order order, Long productId) {
+        if (order.getOrderItems() == null || order.getOrderItems().isEmpty()) {
+            throw new ValidationException("Order has no items to edit");
+        }
+
+        return order.getOrderItems().stream()
+                .filter(item -> item.getProduct().getId().equals(productId))
+                .findFirst()
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        String.format("Product #%d not found in order #%d", productId, order.getId())
+                ));
+    }
+    // Update the validateEditRequest method to accept EditOrderQuantityDTO
+    private void validateEditRequest(EditOrderQuantityDTO editRequest) {
+        if (editRequest == null) {
+            throw new ValidationException("Edit request cannot be null");
+        }
+        if (editRequest.getNewQuantity() == null || editRequest.getNewQuantity() <= 0) {
+            throw new ValidationException("New quantity must be greater than zero");
+        }
+        if (editRequest.getNewUnit() == null) {
+            throw new ValidationException("Unit must be specified");
+        }
+    }
+
+    // New method for editing specific product
+    @Transactional
+    public OrderResponseDTO editOrderProduct(Long orderId, Long productId, EditOrderProductDTO editRequest) {
+        String methodName = "editOrderProduct";
+        logEntry(methodName, Map.of("orderId", orderId, "productId", productId, "editRequest", editRequest));
+
+        try {
+            // Validate input
+            if (editRequest == null) {
+                throw new ValidationException("Edit request cannot be null");
+            }
+            if (editRequest.getNewQuantity() == null || editRequest.getNewQuantity() <= 0) {
+                throw new ValidationException("New quantity must be greater than zero");
+            }
+            if (editRequest.getNewUnit() == null) {
+                throw new ValidationException("Unit must be specified");
+            }
+
+            // Get the order with items
+            Order order = orderRepo.findByIdWithOrderItems(orderId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Order Not Found with Id: " + orderId));
+
+            // Validate order status
+            validateOrderStatusForEditing(order);
+
+            // Find the specific order item
+            OrderItem orderItem = findOrderItemByProductId(order, productId);
+            Product product = orderItem.getProduct();
+
+            // Store old values for logging
+            Double oldQuantity = orderItem.getQuantity();
+            NetWeight oldUnit = orderItem.getUnit();
+            Double newQuantity = editRequest.getNewQuantity();
+            NetWeight newUnit = editRequest.getNewUnit();
+
+            log.info("Editing specific product - Order#{} Product#{}: {}, old={}{}, new={}{}",
+                    orderId, productId, product.getProductName(),
+                    oldQuantity, oldUnit.getUnit(),
+                    newQuantity, newUnit.getUnit());
+
+            // Get product with lock
+            Product lockedProduct = productRepo.findByIdWithLock(productId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Product Not Found with Id: " + productId));
+
+            // Calculate stock adjustment
+            Double stockAdjustment = calculateStockAdjustment(
+                    oldQuantity, oldUnit,
+                    newQuantity, newUnit,
+                    lockedProduct.getUnit()
+            );
+
+            // Adjust product stock
+            adjustProductStock(lockedProduct, stockAdjustment);
+
+            // Update order item
+            orderItem.setQuantity(newQuantity);
+            orderItem.setUnit(newUnit);
+
+            // Save the order
+            Order savedOrder = orderRepo.save(order);
+
+//            // Send notification
+//            sendOrderEditNotification(savedOrder, product, oldQuantity, oldUnit,
+//                    newQuantity, newUnit);
+
+            logSuccess(methodName, "Product #" + productId + " in order #" + orderId + " edited successfully");
+            return convertToDTO(savedOrder);
+
+        } catch (ResourceNotFoundException | ValidationException e) {
+            logValidationError(methodName, e.getMessage());
+            throw e;
+        } catch (Exception e) {
+            String errorMsg = "Failed to edit order product";
+            logUnexpectedError(methodName, errorMsg, e);
+            throw new OrderProcessingException(errorMsg, e);
+        }
+    }
+
+
+    private Double calculateStockAdjustment(
+            Double oldOrderQty, NetWeight oldOrderUnit,
+            Double newOrderQty, NetWeight newOrderUnit,
+            NetWeight productUnit
+    ) {
+        // Convert everything to product's unit for comparison
+        Double oldQtyInProductUnit = convertQuantity(oldOrderQty, oldOrderUnit, productUnit);
+        Double newQtyInProductUnit = convertQuantity(newOrderQty, newOrderUnit, productUnit);
+
+        // Calculate difference (negative means stock is returned, positive means stock is taken)
+        return newQtyInProductUnit - oldQtyInProductUnit;
+    }
+
+    private Double convertQuantity(Double quantity, NetWeight fromUnit, NetWeight toUnit) {
+        if (fromUnit == toUnit) {
+            return quantity;
+        }
+
+        // Convert to grams first (as intermediate)
+        Double quantityInGrams;
+
+        switch (fromUnit) {
+            case KILOGRAM:
+                quantityInGrams = quantity * 1000;
+                break;
+            case GRAM:
+                quantityInGrams = quantity;
+                break;
+            case UNITS:
+                // If converting from UNITS to weight, this is an error
+                if (toUnit != NetWeight.UNITS) {
+                    throw new IllegalArgumentException("Cannot convert UNITS to weight units");
+                }
+                return quantity;  // UNITS to UNITS
+            default:
+                throw new IllegalArgumentException("Unknown fromUnit: " + fromUnit);
+        }
+
+        // Convert from grams to target unit
+        switch (toUnit) {
+            case KILOGRAM:
+                return quantityInGrams / 1000;
+            case GRAM:
+                return quantityInGrams;
+            case UNITS:
+                throw new IllegalArgumentException("Cannot convert weight units to UNITS");
+            default:
+                throw new IllegalArgumentException("Unknown toUnit: " + toUnit);
+        }
+    }
+
+    private void adjustProductStock(Product product, Double adjustment) {
+        if (Math.abs(adjustment) < 0.0001) {
+            log.info("No stock adjustment needed");
+            return;
+        }
+
+        if (adjustment < 0) {
+            // Negative adjustment means returning stock to inventory
+            Double returnAmount = Math.abs(adjustment);
+            product.increaseStock(returnAmount);
+            log.info("Returning {} {} to product stock. New stock: {} {}",
+                    returnAmount, product.getUnit().getUnit(),
+                    product.getQuantity(), product.getUnit().getUnit());
+        } else {
+            // Positive adjustment means taking more stock from inventory
+            if (!product.hasSufficientStock(adjustment)) {
+                throw new ValidationException(
+                        String.format("Insufficient stock. Need: %s %s, Available: %s %s",
+                                adjustment, product.getUnit().getUnit(),
+                                product.getQuantity(), product.getUnit().getUnit())
+                );
+            }
+            product.reduceStock(adjustment);
+            log.info("Deducting {} {} from product stock. New stock: {} {}",
+                    adjustment, product.getUnit().getUnit(),
+                    product.getQuantity(), product.getUnit().getUnit());
+        }
+
+        productRepo.save(product);
+    }
+
+    private void sendOrderEditNotification(Order order, Product product,
+                                           Double oldQty, NetWeight oldUnit,
+                                           Double newQty, NetWeight newUnit,
+                                           String reason) {
+        try {
+            User user = order.getUser();
+
+            String message = String.format(
+                    "Your order #%d has been modified.%n" +
+                            "Product: %s%n" +
+                            "Quantity changed from %s%s to %s%s%n" +
+                            "Reason: %s",
+                    order.getId(),
+                    product.getProductName(),
+                    oldQty, oldUnit.getUnit(),
+                    newQty, newUnit.getUnit(),
+                    reason != null ? reason : "Inventory adjustment"
+            );
+
+            notificationService.sendNotificationToUser(
+                    user.getEmail(),
+                    message,
+                    "System",
+                    "ORDER_MODIFIED",
+                    "/orders/" + order.getId(),
+                    "ORDERS",
+                    "INFO",
+                    "Order Modified - #" + order.getId()
+            );
+
+        } catch (Exception e) {
+            log.error("Failed to send order edit notification: {}", e.getMessage());
+        }
+    }
+
+    private void validateOrderStatusForEditing(Order order) {
+        if (order.getStatus() != OrderStatus.PENDING && order.getStatus() != OrderStatus.APPROVED) {
+            throw new ValidationException(
+                    String.format("Can only edit PENDING or APPROVED orders. Current status: %s. " +
+                                    "Order #%d is already %s.",
+                            order.getStatus(), order.getId(), order.getStatus())
+            );
+        }
+    }
+
+    private OrderItem getFirstOrderItem(Order order) {
+        if (order.getOrderItems() == null || order.getOrderItems().isEmpty()) {
+            throw new ValidationException("Order has no items to edit");
+        }
+
+        // For multi-item orders, you might want to modify this
+        // Currently supports editing the first item
+        OrderItem orderItem = order.getOrderItems().get(0);
+
+        if (order.getOrderItems().size() > 1) {
+            log.warn("Order #{} has multiple items. Editing only the first item: productId={}",
+                    order.getId(), orderItem.getProduct().getId());
+        }
+
+        return orderItem;
+    }
+
+    private Double convertToBaseUnit(Double quantity, NetWeight unit) {
+        // Use grams as base unit for weight comparison
+        switch (unit) {
+            case KILOGRAM:
+                return quantity * 1000; // Convert kg to g
+            case GRAM:
+                return quantity; // Already in grams
+            case UNITS:
+                return quantity; // Units are their own base
+            default:
+                throw new IllegalArgumentException("Unknown unit: " + unit);
+        }
+    }
+
+    private Double convertFromBaseUnit(Double quantityInBaseUnit, NetWeight targetUnit) {
+        // Convert from base unit (grams) to target unit
+        switch (targetUnit) {
+            case KILOGRAM:
+                return quantityInBaseUnit / 1000; // Convert g to kg
+            case GRAM:
+                return quantityInBaseUnit; // Already in grams
+            case UNITS:
+                return quantityInBaseUnit; // Units are their own base
+            default:
+                throw new IllegalArgumentException("Unknown unit: " + targetUnit);
+        }
+    }
+
+    private void adjustProductStock(Product product, Double differenceInBaseUnit, NetWeight productUnit) {
+        // Convert difference to product's unit for adjustment
+        Double differenceInProductUnit = convertFromBaseUnit(differenceInBaseUnit, productUnit);
+
+        if (Math.abs(differenceInProductUnit) < 0.001) {
+            // No change needed
+            return;
+        }
+
+        // Handle stock reduction (admin wants to send less)
+        if (differenceInBaseUnit < 0) {
+            Double quantityToReturn = Math.abs(differenceInProductUnit);
+            product.increaseStock(quantityToReturn);
+            productRepo.save(product);
+
+            log.info("Stock returned to inventory: productId={}, returned={} {}, newStock={} {}",
+                    product.getId(), quantityToReturn, productUnit.getUnit(),
+                    product.getQuantity(), productUnit.getUnit());
+        }
+        // Handle stock increase (admin wants to send more)
+        else {
+            // Check if product has enough stock for the increase
+            if (!product.hasSufficientStock(differenceInProductUnit)) {
+                String errorMsg = String.format("Insufficient stock to increase order quantity. " +
+                                "Product: %s, Available: %s %s, " +
+                                "Requested additional: %s %s",
+                        product.getProductName(),
+                        formatQuantity(product.getQuantity(), productUnit),
+                        productUnit.getUnit(),
+                        formatQuantity(differenceInProductUnit, productUnit),
+                        productUnit.getUnit());
+                throw new ValidationException(errorMsg);
+            }
+
+            // Deduct additional stock
+            product.reduceStock(differenceInProductUnit);
+            productRepo.save(product);
+
+            log.info("Additional stock deducted: productId={}, deducted={} {}, newStock={} {}",
+                    product.getId(), differenceInProductUnit, productUnit.getUnit(),
+                    product.getQuantity(), productUnit.getUnit());
+        }
+    }
+
+    private String formatQuantity(Double quantity, NetWeight unit) {
+        if (quantity == null) return "0";
+
+        // Format based on unit
+        if (unit == NetWeight.KILOGRAM && quantity < 1) {
+            // Convert to grams for small quantities
+            Double grams = quantity * 1000;
+            return String.format("%.0f %s", grams, NetWeight.GRAM.getUnit());
+        } else if (unit == NetWeight.GRAM && quantity >= 1000) {
+            // Convert to kg for large quantities
+            Double kg = quantity / 1000;
+            return String.format("%.2f %s", kg, NetWeight.KILOGRAM.getUnit());
+        }
+
+        return String.format("%.2f %s", quantity, unit.getUnit());
+    }
+
+    private void sendOrderEditNotification(Order order, Product product,
+                                           Double oldQuantityInBase, Double newQuantityInBase,
+                                           NetWeight oldUnit, NetWeight newUnit, String reason) {
+        try {
+            User user = order.getUser();
+
+            // Format quantities for display
+            String oldDisplay = formatQuantity(
+                    convertFromBaseUnit(oldQuantityInBase, oldUnit), oldUnit);
+            String newDisplay = formatQuantity(
+                    convertFromBaseUnit(newQuantityInBase, newUnit), newUnit);
+
+            String message = String.format(
+                    "Your order #%d has been modified by admin.%n" +
+                            "Product: %s%n" +
+                            "Quantity changed: %s → %s%n" +
+                            "%s%n" +
+                            "Reason: %s",
+                    order.getId(),
+                    product.getProductName(),
+                    oldDisplay,
+                    newDisplay,
+                    (oldUnit != newUnit) ? String.format("Unit changed: %s → %s", oldUnit.getUnit(), newUnit.getUnit()) : "",
+                    reason != null ? reason : "No reason provided"
+            );
+
+            notificationService.sendNotificationToUser(
+                    user.getEmail(),
+                    message,
+                    "System",
+                    "ORDER_MODIFIED",
+                    "/orders/" + order.getId(),
+                    "ORDERS",
+                    "INFO",
+                    "Order Modified - #" + order.getId()
+            );
+
+            log.info("Order edit notification sent for order #{}", order.getId());
+        } catch (Exception e) {
+            log.error("Failed to send order edit notification: {}", e.getMessage());
+            // Don't throw - notifications are secondary
+        }
+    }
+    // Add this helper method for unit conversion
+    private Double convertToBaseUnit(Double quantity, NetWeight fromUnit, NetWeight toUnit) {
+        if (fromUnit == null || toUnit == null) {
+            return quantity;
+        }
+
+        // Convert through GRAMS (common base)
+        Double quantityInGrams = quantity * getGramsPerUnit(fromUnit);
+        return quantityInGrams / getGramsPerUnit(toUnit);
+    }
+
+    private Double getGramsPerUnit(NetWeight unit) {
+        switch (unit) {
+            case GRAM:
+                return 1.0;
+            case KILOGRAM:
+                return 1000.0;
+
+            case UNITS: // For items like bags
+                return 1.0; // No conversion needed
+            default:
+                return 1.0;
         }
     }
 

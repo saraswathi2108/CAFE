@@ -22,6 +22,9 @@ public class OrderItem {
 
     private Double quantity;
 
+    @Enumerated(EnumType.STRING)
+    private NetWeight unit;
+
     // You can add price field later if needed
     // private BigDecimal price;
     // private BigDecimal subtotal;

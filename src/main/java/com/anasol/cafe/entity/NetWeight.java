@@ -5,7 +5,6 @@ public enum NetWeight {
     GRAM("g"),
     UNITS("units");
 
-
     private final String unit;
 
     NetWeight(String unit) {
@@ -34,5 +33,31 @@ public enum NetWeight {
 
         // UNITS cannot be converted to weight units
         throw new IllegalArgumentException("Cannot convert " + this + " to " + targetUnit);
+    }
+
+    // New method: Check if conversion is possible
+    public boolean canConvertTo(NetWeight targetUnit) {
+        if (this == targetUnit) {
+            return true;
+        }
+
+        // Allow conversion between KILOGRAM and GRAM only
+        if ((this == KILOGRAM && targetUnit == GRAM) ||
+                (this == GRAM && targetUnit == KILOGRAM)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    // New method: Convert with validation
+    public double convertWithValidation(double value, NetWeight targetUnit) {
+        if (!canConvertTo(targetUnit)) {
+            throw new IllegalArgumentException(
+                    String.format("Cannot convert from %s to %s. Only kg↔g conversion is supported.",
+                            this, targetUnit)
+            );
+        }
+        return convertTo(value, targetUnit);
     }
 }

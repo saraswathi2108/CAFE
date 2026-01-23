@@ -7,6 +7,7 @@ import com.anasol.cafe.exceptions.OrderProcessingException;
 import com.anasol.cafe.exceptions.ResourceNotFoundException;
 import com.anasol.cafe.repository.ProductRepo;
 import com.anasol.cafe.service.OrderService;
+import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -379,6 +380,17 @@ public class OrderController {
     }
 
 
+    // In OrderController.java
+
+    // In OrderController.java, add this endpoint:
+
+    @PreAuthorize("hasAnyRole('ADMIN','GODOWN_MANAGER')")
+    @PutMapping("/admin/edit-quantity")
+    public ResponseEntity<OrderResponseDTO> editOrderQuantity(
+            @RequestBody @Valid EditOrderQuantityDTO editRequest) {
+
+        return ResponseEntity.ok(orderService.editOrderQuantity( editRequest));
+    }
     @PreAuthorize("hasAnyRole('ADMIN','GODOWN_MANAGER')")
     @GetMapping("/admin/stats/delivered/product/{productId}")
     public ResponseEntity<Map<String, Object>> getProductDeliveryAcrossBranches(
