@@ -270,4 +270,13 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             @Param("startDate") LocalDateTime startDate,
             @Param("endDate") LocalDateTime endDate,
             Pageable pageable);
+
+    @Query("SELECT p.id, p.productName, b.branchName, SUM(oi.quantity), p.quantity, p.unit " +
+            "FROM Order o " +
+            "JOIN o.orderItems oi " +
+            "JOIN oi.product p " +
+            "JOIN Branch b ON o.branchId = b.id " +
+            "WHERE o.status != 'CANCELLED' AND o.status != 'REJECTED' " +
+            "GROUP BY p.id, p.productName, b.branchName, p.quantity, p.unit")
+    List<Object[]> getProductBranchOrderData();
 }

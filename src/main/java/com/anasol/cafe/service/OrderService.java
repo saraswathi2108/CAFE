@@ -1525,6 +1525,50 @@ public class OrderService {
         }
     }
 
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> getProductBranchOrderMatrix() {
+        // 1. Get all active branches to define the columns
+        List<String> allBranchNames = branchRepository.findAll().stream()
+                .map(Branch::getBranchName)
+                .collect(Collectors.toList());
+
+        // 2. Get the aggregated data
+        List<Object[]> results = orderRepo.getProductBranchOrderData();
+
+        // 3. Process results into DTOs
+        Map<Long, ProductBranchOrderMatrixDTO> matrixMap = new HashMap<>();
+
+        for (Object[] row : results) {
+            Long productId = (Long) row[0];
+            String productName = (String) row[1];
+            String branchName = (String) row[2];
+            Double orderedQty = (Double) row[3];
+            Double warehouseStock = (Double) row[4];
+            String unit = row[5] != null ? row[5].toString() : "";
+
+            ProductBranchOrderMatrixDTO dto = matrixMap.computeIfAbsent(productId, k -> {
+                ProductBranchOrderMatrixDTO newDto = new ProductBranchOrderMatrixDTO();
+                newDto.setProductId(productId);
+                newDto.setProductName(productName);
+                newDto.setWarehouseStock(warehouseStock);
+                newDto.setUnit(unit);
+                // Initialize all branches with 0.0
+                allBranchNames.forEach(name -> newDto.getBranchOrders().put(name, 0.0));
+                return newDto;
+            });
+
+            dto.getBranchOrders().put(branchName, orderedQty);
+        }
+
+        // 4. Prepare Final Response
+        Map<String, Object> response = new HashMap<>();
+        response.put("columns", allBranchNames);
+        response.put("data", new ArrayList<>(matrixMap.values()));
+
+        return response;
+    }
+
     // Get top delivered products across all branches
     @Transactional(readOnly = true)
     public List<Map<String, Object>> getTopDeliveredProducts(Integer year, Integer month, int limit) {
