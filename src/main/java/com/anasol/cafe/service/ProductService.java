@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.anasol.cafe.dto.ProductResponse;
@@ -44,8 +45,8 @@ public class ProductService {
 
 		product.setCategory(category);
 		product.setProductName(productName);
-		product.setQuantity(quantity); // Changed from Long to Double
-		product.setUnit(unit); // Added unit
+		product.setQuantity(quantity);
+		product.setUnit(unit);
 		product.setActive(true);
 
 		String url = s3Service.uploadFile(imageFile);
@@ -198,5 +199,49 @@ public class ProductService {
 						p.getCategory().getCategoryName()
 				))
 				.toList();
+	}
+
+	public List<ProductResponse> getOutOfStockProducts() {
+
+		List<Product> products = productRepo
+				.findByQuantityEqualsAndIsActiveTrue(0.0);
+
+		if (products.isEmpty()) {
+			throw new ResourceNotFoundException("No out-of-stock products found");
+		}
+
+		return products.stream()
+				.map(p -> new ProductResponse(
+						p.getId(),
+						p.getProductName(),
+						p.getQuantity(),
+						p.getUnit(),
+						s3Service.getFileUrl(p.getPImage()),
+						p.getCategory().getCategoryName()
+				))
+				.toList();
+	}
+
+	@Transactional
+	public String changeProductCategory(Long productId, Long categoryId) {
+
+		Product product = productRepo.findById(productId)
+				.orElseThrow(() ->
+						new ResourceNotFoundException("Product not found with id: " + productId));
+
+		Category category = categoryRepository.findById(categoryId)
+				.orElseThrow(() ->
+						new ResourceNotFoundException("Category not found with id: " + categoryId));
+
+		product.setCategory(category);
+		productRepo.save(product);
+
+		String message = "Changed category for productId=" + productId +
+				" to categoryId=" + categoryId +
+				" (" + category.getCategoryName() + ")";
+
+		log.info(message);
+
+		return message;
 	}
 }

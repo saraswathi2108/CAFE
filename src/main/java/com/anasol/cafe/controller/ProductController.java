@@ -106,4 +106,25 @@ public class ProductController {
 		log.info("searching by name {}", name);
 		return products;
 	}
+
+
+	@PreAuthorize("hasAnyRole('MANAGER', 'STAFF', 'ADMIN','GODOWN_MANAGER')")
+	@GetMapping("/out-of-stock")
+	public List<ProductResponse> getOutOfStockProducts() {
+		log.info("Fetching out-of-stock products");
+		return productService.getOutOfStockProducts();
+	}
+
+	@PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
+	@PutMapping("/{productId}/change-category/{categoryId}")
+	public ResponseEntity<String> changeProductCategory(
+			@PathVariable Long productId,
+			@PathVariable Long categoryId) {
+
+		log.info("Changing category for productId={} to categoryId={}", productId, categoryId);
+
+		return ResponseEntity.ok(
+				productService.changeProductCategory(productId, categoryId)
+		);
+	}
 }

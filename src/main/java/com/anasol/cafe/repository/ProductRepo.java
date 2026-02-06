@@ -35,4 +35,6 @@ public interface ProductRepo extends JpaRepository<Product, Long> {
     void deleteByCategoryId(long id);
 
 	boolean existsByCategoryId(long id);
+
+	List<Product> findByQuantityEqualsAndIsActiveTrue(Double quantity);
 }

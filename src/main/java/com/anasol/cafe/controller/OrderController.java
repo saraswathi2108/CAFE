@@ -397,6 +397,7 @@ public class OrderController {
     public ResponseEntity<Map<String, Object>> getProductBranchOrderMatrix() {
         return ResponseEntity.ok(orderService.getProductBranchOrderMatrix());
     }
+
     @PreAuthorize("hasAnyRole('ADMIN','GODOWN_MANAGER')")
     @GetMapping("/admin/stats/delivered/product/{productId}")
     public ResponseEntity<Map<String, Object>> getProductDeliveryAcrossBranches(
